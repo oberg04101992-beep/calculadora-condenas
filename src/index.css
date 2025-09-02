@@ -1,0 +1,21 @@
+/* Reset suave y tipografía */
+:root { --radius: 10px; }
+* { box-sizing: border-box; }
+html, body, #root { height: 100%; }
+body { margin: 0; font-family: system-ui, -apple-system, Segoe U..., Roboto, Arial, sans-serif; color: #111827; background: #fff; }
+
+/* Inputs y selects consistentes */
+input, select, button { font: inherit; }
+
+/* details/summary accesibles */
+details { border: 1px solid #e5e7eb; border-radius: var(--radius); padding: 8px 10px; background: #fff; }
+details > summary { list-style: none; cursor: pointer; font-weight: 700; }
+details > summary::-webkit-details-marker { display: none; }
+
+/* Botones genéricos */
+button { border-radius: var(--radius); }
+
+/* Pequeños espaciamientos utilitarios por si los necesitas */
+.mt-8 { margin-top: 8px; }
+.mt-12 { margin-top: 12px; }
+.mt-16 { margin-top: 16px; }

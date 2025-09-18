@@ -4,6 +4,7 @@ import AbonosDistribucion from "./components/AbonosDistribucion";
 import DisclaimerModal from "./components/DisclaimerModal";
 import FeedbackSlideOver from "./components/FeedbackSlideOver";
 import ConfirmDialog from "./components/ConfirmDialog";
+import CondicionesEspeciales from "./components/CondicionesEspeciales";
 
 /** Contenedor de errores para aislar fallos del módulo de distribución */
 class UIErrorBoundary extends React.Component<
@@ -1349,6 +1350,8 @@ export default function CalculadoraCondenas() {
         </div>
       </div>
 
+      {/* Condiciones especiales (informativo, no altera el cómputo) */}
+      <CondicionesEspeciales />      
       {/* RESULTADOS */}
       <div
         className="print-block"

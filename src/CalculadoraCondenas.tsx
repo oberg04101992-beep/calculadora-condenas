@@ -4,7 +4,9 @@ import AbonosDistribucion from "./components/AbonosDistribucion";
 import DisclaimerModal from "./components/DisclaimerModal";
 import FeedbackSlideOver from "./components/FeedbackSlideOver";
 import ConfirmDialog from "./components/ConfirmDialog";
-import CondicionesEspeciales from "./components/CondicionesEspeciales";
+
+/** ===== UI consts para estandarizar estilos ===== */
+const UI_BORDER = "#d1d5db";
 
 /** Contenedor de errores para aislar fallos del módulo de distribución */
 class UIErrorBoundary extends React.Component<
@@ -63,7 +65,7 @@ type Resultados = {
   tmCet: string;
   _debug?: {
     diasBrutosTotales: number;
-    diasConAbonosTermino: number; // D_eff (incluye global)
+    diasConAbonosTermino: number; // base efectiva (incluye global)
   };
 };
 
@@ -142,7 +144,7 @@ function encadenarExpediente(
     );
     const durBruto = diffDaysInclusiveUTC(startBruto, endBruto);
 
-    // tramo con abonos por causa (no aplica global aquí)
+    // tramo con abonos por causa
     const ab = Math.max(0, c.abonoCausa || 0);
     const durConAbonos = Math.max(0, durBruto - ab);
     const endConAbonos =
@@ -340,8 +342,8 @@ export default function CalculadoraCondenas() {
     return encadenarExpediente(causasOrdenadas, inicio, encadenado);
   }, [inicio, causasOrdenadas, encadenado]);
 
-  /* ===== Base normativa estricta =====
-     D_eff = (suma causas con abonos por causa) − abono global  */
+  /* ===== Base efectiva (días) =====
+     Base efectiva = (suma causas con abonos por causa) − abono global  */
   const baseEfectivaDias = useMemo(() => {
     if (!chainActual) return 0;
     return Math.max(
@@ -350,7 +352,7 @@ export default function CalculadoraCondenas() {
     );
   }, [chainActual, abonosTotalesExpediente]);
 
-  /* TO normativo: Inicio + (D_eff − 1) */
+  /* TO normativo: Inicio + (base efectiva − 1) */
   const toNormativo = useMemo(() => {
     const ini = parseDMYtoUTC(inicio);
     if (!ini || baseEfectivaDias <= 0) return "";
@@ -364,7 +366,7 @@ export default function CalculadoraCondenas() {
     const ratio = regimenAplicado === "1/2" ? 1 / 2 : 2 / 3;
     const diasTM = Math.ceil(baseEfectivaDias * ratio);
 
-    // Vista Oficial: equivalente exclusivo (día 1 = día siguiente)
+    // Vista Oficial: equivalente exclusiva (día 1 = día siguiente)
     const startForTM = vistaMinimos === "oficial" ? addDaysUTC(ini, 1) : ini;
     const llegada = addDaysUTC(startForTM, Math.max(0, diasTM - 1));
     return fmtDMY(llegada);
@@ -375,7 +377,7 @@ export default function CalculadoraCondenas() {
     [tmIngresado, tmAuto]
   );
 
-  // TMBI desde TM (manual o auto) – normativa: TM − 12 meses (con fin de mes)
+  // TMBI desde TM – normativa: TM − 12 meses (con fin de mes)
   const tmbiAuto = useMemo(() => {
     const tmD = parseDMYtoUTC(tmMostrado || tmAuto);
     if (!tmD) return "";
@@ -400,7 +402,7 @@ export default function CalculadoraCondenas() {
     return fmtDMY(mostrar);
   }, [inicio, tmbiMostrado, vistaMinimos]);
 
-  /* Ajuste fino (±1) solo de presentación (no toca base) */
+  /* Ajuste fino (±1) solo de presentación */
   const tmDisplay = useMemo(() => {
     const d = parseDMYtoUTC(tmMostrado);
     if (!d) return "";
@@ -433,8 +435,7 @@ export default function CalculadoraCondenas() {
       _debug: chainActual
         ? {
             diasBrutosTotales: chainActual.totalBrutos,
-            // D_eff (incluye abono global)
-            diasConAbonosTermino: baseEfectivaDias,
+            diasConAbonosTermino: baseEfectivaDias, // = base efectiva
           }
         : undefined,
     };
@@ -712,7 +713,7 @@ export default function CalculadoraCondenas() {
     ].join(sep));
     lines.push([
       "Resumen",
-      "Vista mínimos",
+      "Vista de mínimos",
       esc(vistaMinimos === "oficial" ? "Oficial (exclusiva)" : "Doctrinal (inclusiva)"),
     ].join(sep));
     lines.push([
@@ -725,11 +726,15 @@ export default function CalculadoraCondenas() {
       "Días con abonos (TO)",
       esc(resultados._debug?.diasConAbonosTermino ?? ""),
     ].join(sep));
-    lines.push(["Resumen", "Ajustes finos", esc(
-      tmAjuste === 0 && cetAjuste === 0
-        ? "—"
-        : `TM ${tmAjuste >= 0 ? "+" : ""}${tmAjuste}, CET ${cetAjuste >= 0 ? "+" : ""}${cetAjuste}`
-    )].join(sep));
+    lines.push([
+      "Resumen",
+      "Ajustes finos",
+      esc(
+        tmAjuste === 0 && cetAjuste === 0
+          ? "—"
+          : `TM ${tmAjuste >= 0 ? "+" : ""}${tmAjuste}, CET ${cetAjuste >= 0 ? "+" : ""}${cetAjuste}`
+      ),
+    ].join(sep));
     lines.push(["Resumen", "Abonos por causa", esc(totalAbonosPorCausa)].join(sep));
     lines.push(["Resumen", "Abono global", esc(totalAbonosGlobal)].join(sep));
     lines.push(["Resumen", "Abonos totales", esc(totalAbonosTodos)].join(sep));
@@ -821,6 +826,20 @@ export default function CalculadoraCondenas() {
     e.target.value = "";
   };
 
+  /* === Nuevo: impresión de ficha === */
+  const ejemploRef = useRef<HTMLDetailsElement | null>(null);
+  const imprimirFicha = () => {
+    const det = ejemploRef.current;
+    const prevOpen = det ? det.open : undefined;
+    if (det) det.open = true; // asegurar que el ejemplo salga en la impresión
+    const onAfter = () => {
+      if (det && typeof prevOpen !== "undefined") det.open = prevOpen;
+      window.removeEventListener("afterprint", onAfter);
+    };
+    window.addEventListener("afterprint", onAfter);
+    setTimeout(() => window.print(), 50);
+  };
+
   /* Restablecer (no dispara modal) */
   const restablecer = () => {
     try {
@@ -906,7 +925,7 @@ export default function CalculadoraCondenas() {
             opacity: 0.85,
             padding: "6px 10px",
             borderRadius: 999,
-            border: "1px solid #e5e7eb",
+            border: `1px solid ${UI_BORDER}`,
             background: "#f9fafb",
           }}
         >
@@ -940,6 +959,21 @@ export default function CalculadoraCondenas() {
             }}
           >
             Exportar CSV (Excel)
+          </button>
+          {/* Imprimir ficha */}
+          <button
+            onClick={imprimirFicha}
+            title="Imprime las tarjetas de resultados y el ejemplo simplificado"
+            style={{
+              padding: "8px 12px",
+              borderRadius: 10,
+              border: "1px solid #6366f1",
+              background: "#6366f1",
+              color: "#fff",
+              cursor: "pointer",
+            }}
+          >
+            Imprimir ficha
           </button>
           <button
             onClick={restablecer}
@@ -986,9 +1020,7 @@ export default function CalculadoraCondenas() {
               width: "100%",
               padding: 10,
               borderRadius: 10,
-              border: `1px solid ${
-                inicio.length === 0 || inicioValido ? "#d1d5db" : "#ef4444"
-              }`,
+              border: `1px solid ${UI_BORDER}`,
               background: "white",
             }}
             inputMode="numeric"
@@ -1017,7 +1049,7 @@ export default function CalculadoraCondenas() {
               width: "100%",
               padding: 10,
               borderRadius: 10,
-              border: "1px solid #d1d5db",
+              border: `1px solid ${UI_BORDER}`,
               background: "white",
               cursor: "pointer",
             }}
@@ -1046,7 +1078,7 @@ export default function CalculadoraCondenas() {
               width: "100%",
               padding: 10,
               borderRadius: 10,
-              border: "1px solid #d1d5db",
+              border: `1px solid ${UI_BORDER}`,
               background: "white",
               cursor: "pointer",
             }}
@@ -1081,7 +1113,7 @@ export default function CalculadoraCondenas() {
                 padding: "2px 8px",
                 borderRadius: 999,
                 fontSize: 12,
-                border: "1px solid #e5e7eb",
+                border: `1px solid ${UI_BORDER}`,
                 background: "#f3f4f6",
               }}
               title="Régimen aplicado al expediente"
@@ -1123,235 +1155,171 @@ export default function CalculadoraCondenas() {
         </div>
       </div>
 
-      {/* Causas y columna de opciones (con aviso de que están en avanzadas) */}
-      <div
-        style={{
-          marginTop: 12,
-          display: "grid",
-          gridTemplateColumns: "1fr 1fr",
-          gap: 12,
-        }}
-      >
-        {/* Causas */}
-        <div>
-          <h3 style={{ margin: 0 }}>Causas</h3>
-          <label
-            style={{
-              display: "flex",
-              gap: 6,
-              alignItems: "center",
-              fontSize: 12,
-              color: "#374151",
-            }}
-          >
-            <input
-              type="checkbox"
-              checked={ordenarGravosaPrimero}
-              onChange={() => setOrdenarGravosaPrimero((v) => !v)}
-            />
-            Ordenar automáticamente (más gravosa primero)
-          </label>
-          <button
-            onClick={handleAgregarCausa}
-            style={{
-              marginTop: 8,
-              padding: "8px 12px",
-              borderRadius: 10,
-              border: "1px solid #e5e7eb",
-              background: "#fff",
-              cursor: "pointer",
-            }}
-          >
-            + Agregar causa
-          </button>
+      {/* Causas */}
+      <div style={{ marginTop: 12 }}>
+        <h3 style={{ margin: 0 }}>Causas</h3>
+        <label
+          style={{
+            display: "flex",
+            gap: 6,
+            alignItems: "center",
+            fontSize: 12,
+            color: "#374151",
+          }}
+        >
+          <input
+            type="checkbox"
+            checked={ordenarGravosaPrimero}
+            onChange={() => setOrdenarGravosaPrimero((v) => !v)}
+          />
+          Ordenar automáticamente (más gravosa primero)
+        </label>
+        <button
+          onClick={handleAgregarCausa}
+          style={{
+            marginTop: 8,
+            padding: "8px 12px",
+            borderRadius: 10,
+            border: `1px solid ${UI_BORDER}`,
+            background: "#fff",
+            cursor: "pointer",
+          }}
+        >
+          + Agregar causa
+        </button>
 
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns:
-                "80px 80px 80px 120px 150px 140px 40px",
-              gap: 8,
-              alignItems: "center",
-              marginTop: 10,
-            }}
-          >
-            <div style={{ fontSize: 12, color: "#6b7280" }}>Años</div>
-            <div style={{ fontSize: 12, color: "#6b7280" }}>Meses</div>
-            <div style={{ fontSize: 12, color: "#6b7280" }}>Días</div>
-            <div style={{ fontSize: 12, color: "#6b7280" }}>Régimen</div>
-            <div style={{ fontSize: 12, color: "#6b7280" }}>
-              Abono por causa
-            </div>
-            <div style={{ fontSize: 12, color: "#6b7280" }}>
-              Nombre (opcional)
-            </div>
-            <div></div>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns:
+              "80px 80px 80px 120px 150px 140px 40px",
+            gap: 8,
+            alignItems: "center",
+            marginTop: 10,
+          }}
+        >
+          <div style={{ fontSize: 12, color: "#6b7280" }}>Años</div>
+          <div style={{ fontSize: 12, color: "#6b7280" }}>Meses</div>
+          <div style={{ fontSize: 12, color: "#6b7280" }}>Días</div>
+          <div style={{ fontSize: 12, color: "#6b7280" }}>Régimen</div>
+          <div style={{ fontSize: 12, color: "#6b7280" }}>Abono por causa</div>
+          <div style={{ fontSize: 12, color: "#6b7280" }}>Nombre (opcional)</div>
+          <div></div>
 
-            {causasOrdenadas.map((c) => (
-              <React.Fragment key={c.id}>
-                <input
-                  type="number"
-                  value={c.anios}
-                  onChange={(e) =>
-                    handleChangeCausa(c.id, "anios", Number(e.target.value))
-                  }
-                  style={{
-                    width: "100%",
-                    padding: 10,
-                    borderRadius: 8,
-                    border: "1px solid #d1d5db",
-                  }}
-                  aria-label="Años de la causa"
-                />
-                <input
-                  type="number"
-                  value={c.meses}
-                  onChange={(e) =>
-                    handleChangeCausa(c.id, "meses", Number(e.target.value))
-                  }
-                  style={{
-                    width: "100%",
-                    padding: 10,
-                    borderRadius: 8,
-                    border: "1px solid #d1d5db",
-                  }}
-                  aria-label="Meses de la causa"
-                />
-                <input
-                  type="number"
-                  value={c.dias}
-                  onChange={(e) =>
-                    handleChangeCausa(c.id, "dias", Number(e.target.value))
-                  }
-                  style={{
-                    width: "100%",
-                    padding: 10,
-                    borderRadius: 8,
-                    border: "1px solid #d1d5db",
-                  }}
-                  aria-label="Días de la causa"
-                />
-                <div style={{ display: "flex", gap: 8 }}>
-                  <label
-                    style={{ display: "flex", gap: 6, alignItems: "center" }}
-                  >
-                    <input
-                      type="radio"
-                      name={`reg_${c.id}`}
-                      checked={c.regimen === "1/2"}
-                      onChange={() =>
-                        handleChangeCausa(c.id, "regimen", "1/2")
-                      }
-                    />{" "}
-                    1/2
-                  </label>
-                  <label
-                    style={{ display: "flex", gap: 6, alignItems: "center" }}
-                  >
-                    <input
-                      type="radio"
-                      name={`reg_${c.id}`}
-                      checked={c.regimen === "2/3"}
-                      onChange={() =>
-                        handleChangeCausa(c.id, "regimen", "2/3")
-                      }
-                    />{" "}
-                    2/3
-                  </label>
-                </div>
-                <input
-                  type="number"
-                  value={c.abonoCausa}
-                  onChange={(e) =>
-                    handleChangeCausa(
-                      c.id,
-                      "abonoCausa",
-                      Math.max(0, Number(e.target.value))
-                    )
-                  }
-                  style={{
-                    width: "100%",
-                    padding: 10,
-                    borderRadius: 8,
-                    border: "1px solid #d1d5db",
-                  }}
-                  aria-label="Abono por causa"
-                />
-                <input
-                  value={c.nombre || ""}
-                  onChange={(e) =>
-                    handleChangeCausa(c.id, "nombre", e.target.value)
-                  }
-                  placeholder="(opcional)"
-                  style={{
-                    width: "100%",
-                    padding: 10,
-                    borderRadius: 8,
-                    border: "1px solid #d1d5db",
-                  }}
-                  aria-label="Nombre de la causa"
-                />
-                <button
-                  onClick={() => handleRemoveCausa(c.id)}
-                  title="Eliminar causa"
-                  style={{
-                    width: 36,
-                    height: 36,
-                    borderRadius: 8,
-                    border: "1px solid #d1d5db",
-                    background: "#fff",
-                    cursor: "pointer",
-                  }}
-                  aria-label="Eliminar causa"
-                >
-                  🗑️
-                </button>
-              </React.Fragment>
-            ))}
-          </div>
-        </div>
-
-        {/* Columna derecha: aviso y atajo a avanzadas */}
-        <div>
-          <h3 style={{ margin: 0 }}>Opciones</h3>
-          <div
-            style={{
-              marginTop: 8,
-              padding: 12,
-              borderRadius: 10,
-              border: "1px solid #e5e7eb",
-              background: "#f9fafb",
-              fontSize: 13,
-              color: "#374151",
-            }}
-          >
-            Las opciones principales están en <b>Opciones avanzadas</b>:
-            <ul style={{ margin: "6px 0 0 18px" }}>
-              <li>Abonos globales del expediente</li>
-              <li>Distribución por causa y TO objetivo</li>
-              <li>Ajustes finos TM/CET (±1 día)</li>
-              <li>Ingresos manuales (TM/TMBI)</li>
-            </ul>
-            <a
-              href="#opciones-avanzadas"
-              onClick={(e) => {
-                e.preventDefault();
-                const el = document.getElementById(
-                  "opciones-avanzadas"
-                ) as HTMLDetailsElement | null;
-                if (el) el.open = true;
-                el?.scrollIntoView({ behavior: "smooth", block: "start" });
-              }}
-              style={{ display: "inline-block", marginTop: 8 }}
-            >
-              Ir a Opciones avanzadas ↓
-            </a>
-          </div>
+          {causasOrdenadas.map((c) => (
+            <React.Fragment key={c.id}>
+              <input
+                type="number"
+                value={c.anios}
+                onChange={(e) =>
+                  handleChangeCausa(c.id, "anios", Number(e.target.value))
+                }
+                style={{
+                  width: "100%",
+                  padding: 10,
+                  borderRadius: 8,
+                  border: `1px solid ${UI_BORDER}`,
+                }}
+                aria-label="Años de la causa"
+              />
+              <input
+                type="number"
+                value={c.meses}
+                onChange={(e) =>
+                  handleChangeCausa(c.id, "meses", Number(e.target.value))
+                }
+                style={{
+                  width: "100%",
+                  padding: 10,
+                  borderRadius: 8,
+                  border: `1px solid ${UI_BORDER}`,
+                }}
+                aria-label="Meses de la causa"
+              />
+              <input
+                type="number"
+                value={c.dias}
+                onChange={(e) =>
+                  handleChangeCausa(c.id, "dias", Number(e.target.value))
+                }
+                style={{
+                  width: "100%",
+                  padding: 10,
+                  borderRadius: 8,
+                  border: `1px solid ${UI_BORDER}`,
+                }}
+                aria-label="Días de la causa"
+              />
+              <div style={{ display: "flex", gap: 8 }}>
+                <label style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                  <input
+                    type="radio"
+                    name={`reg_${c.id}`}
+                    checked={c.regimen === "1/2"}
+                    onChange={() => handleChangeCausa(c.id, "regimen", "1/2")}
+                  />{" "}
+                  1/2
+                </label>
+                <label style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                  <input
+                    type="radio"
+                    name={`reg_${c.id}`}
+                    checked={c.regimen === "2/3"}
+                    onChange={() => handleChangeCausa(c.id, "regimen", "2/3")}
+                  />{" "}
+                  2/3
+                </label>
+              </div>
+              <input
+                type="number"
+                value={c.abonoCausa}
+                onChange={(e) =>
+                  handleChangeCausa(
+                    c.id,
+                    "abonoCausa",
+                    Math.max(0, Number(e.target.value))
+                  )
+                }
+                style={{
+                  width: "100%",
+                  padding: 10,
+                  borderRadius: 8,
+                  border: `1px solid ${UI_BORDER}`,
+                }}
+                aria-label="Abono por causa"
+              />
+              <input
+                value={c.nombre || ""}
+                onChange={(e) => handleChangeCausa(c.id, "nombre", e.target.value)}
+                placeholder="(opcional)"
+                style={{
+                  width: "100%",
+                  padding: 10,
+                  borderRadius: 8,
+                  border: `1px solid ${UI_BORDER}`,
+                }}
+                aria-label="Nombre de la causa"
+              />
+              <button
+                onClick={() => handleRemoveCausa(c.id)}
+                title="Eliminar causa"
+                style={{
+                  width: 36,
+                  height: 36,
+                  borderRadius: 8,
+                  border: `1px solid ${UI_BORDER}`,
+                  background: "#fff",
+                  cursor: "pointer",
+                }}
+                aria-label="Eliminar causa"
+              >
+                🗑️
+              </button>
+            </React.Fragment>
+          ))}
         </div>
       </div>
 
-      {/* Condiciones especiales (informativo, no altera el cómputo) */}
-      <CondicionesEspeciales />      
       {/* RESULTADOS */}
       <div
         className="print-block"
@@ -1379,7 +1347,7 @@ export default function CalculadoraCondenas() {
               alignItems: "center",
             }}
           >
-            <div style={{ fontSize: 12, color: "#b45309" }}>Término original</div>
+            <div style={{ fontSize: 12, color: "#b45309" }}>Término Original</div>
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
               {chip(`Brutos: ${resultados._debug?.diasBrutosTotales ?? "—"}`)}
               {chip(
@@ -1510,7 +1478,74 @@ export default function CalculadoraCondenas() {
         </div>
       ) : null}
 
-      {/* Opciones avanzadas (reordenadas por prioridad) */}
+      {/* Ejemplo simplificado (paso a paso) */}
+      <details style={{ marginTop: 12 }} ref={ejemploRef}>
+        <summary style={{ cursor: "pointer", fontWeight: 600, fontSize: 15 }}>
+          Ejemplo simplificado (paso a paso)
+        </summary>
+        <div style={{ marginTop: 8, fontSize: 14, lineHeight: 1.55 }}>
+          {!inicio || causasOrdenadas.length === 0 ? (
+            <div style={{ fontSize: 12, color: "#6b7280" }}>
+              Ingresa <b>Inicio</b> y al menos <b>una causa</b> para ver la
+              explicación dinámica.
+            </div>
+          ) : (
+            <>
+              <ol style={{ marginLeft: 18 }}>
+                <li>
+                  <b>Punto de partida:</b> Inicio = <b>{inicio}</b>. Modo de encadenado:{" "}
+                  <b>
+                    {encadenado === "dia_siguiente"
+                      ? "Oficial (día siguiente)"
+                      : "Doctrinal (mismo día)"}
+                  </b>
+                  . Vista de mínimos: <b>{vistaMinimos === "oficial" ? "Oficial" : "Doctrinal"}</b>.
+                </li>
+                <li>
+                  <b>Suma bruta de causas:</b> se encadenan las causas desde el <b>Inicio</b>
+                  respetando años/meses (fin de mes) y días inclusivos. Resultado:{" "}
+                  {chip(`Total brutos = ${chainActual?.totalBrutos ?? "—"} días`)}.
+                </li>
+                <li>
+                  <b>Descuentos por causa:</b> se resta el <i>abono por causa</i> a cada tramo. Queda:{" "}
+                  {chip(`Con abonos por causa = ${chainActual?.totalConAbonos ?? "—"} días`)}{" "}
+                  {chip(`Abonos por causa aplicados = ${totalAbonosPorCausa}`)}.
+                </li>
+                <li>
+                  <b>Abono global del expediente:</b> se descuenta al total anterior →{" "}
+                  {chip(`Abono global = ${totalAbonosGlobal}`)}{" "}
+                  {chip(`Abonos totales considerados = ${totalAbonosTodos}`)}.
+                  <br />
+                  <b>Base efectiva (días):</b> {chip(`Base efectiva = ${baseEfectivaDias} días`)}.
+                </li>
+                <li>
+                  <b>Término Original (TO):</b> <b>Inicio</b> + (base efectiva − 1) →{" "}
+                  <b>{resultados.terminoOriginal || "—"}</b>.
+                </li>
+                <li>
+                  <b>Tiempo mínimo (TM):</b> sobre la base efectiva se aplica el régimen <b>{regimenAplicado}</b>:
+                  {regimenAplicado === "1/2" ? " se cumple la mitad" : " se cumplen dos tercios"}.
+                  La fecha considera la vista de mínimos ({vistaMinimos === "oficial" ? "equivalente exclusiva (día 1 = día siguiente)" : "equivalente inclusiva"}).
+                  Resultado: <b>{resultados.tm || "—"}</b>.
+                </li>
+                <li>
+                  <b>TMBI:</b> TM − 12 meses (respetando fin de mes) → <b>{resultados.tmbi || "—"}</b>.
+                </li>
+                <li>
+                  <b>TM CET:</b> 2/3 del tramo inclusivo <b>Inicio→TMBI</b>. Vista{" "}
+                  {vistaMinimos === "oficial" ? "Oficial (se muestra −1 día)" : "Doctrinal"} →{" "}
+                  <b>{resultados.tmCet || "—"}</b>.
+                </li>
+              </ol>
+              <div style={{ marginTop: 6, fontSize: 12, color: "#4b5563" }}>
+                Nota: Los <i>ajustes finos</i> ±1 no alteran la base de cálculo; sólo desplazan la fecha mostrada.
+              </div>
+            </>
+          )}
+        </div>
+      </details>
+
+      {/* Opciones avanzadas */}
       <details id="opciones-avanzadas" style={{ marginTop: 16 }}>
         <summary style={{ cursor: "pointer", fontWeight: 600, fontSize: 15 }}>
           Opciones avanzadas
@@ -1520,7 +1555,7 @@ export default function CalculadoraCondenas() {
         <div
           style={{
             marginTop: 8,
-            border: "1px solid #e5e7eb",
+            border: `1px solid ${UI_BORDER}`,
             borderRadius: 10,
             padding: 12,
             background: "#f9fafb",
@@ -1540,14 +1575,13 @@ export default function CalculadoraCondenas() {
                 width: "100%",
                 padding: 10,
                 borderRadius: 10,
-                border: "1px solid #d1d5db",
+                border: `1px solid ${UI_BORDER}`,
                 background: "#fff",
               }}
               aria-label="Abonos globales del expediente"
             />
             <div style={{ fontSize: 12, color: "#4b5563" }}>
-              Los abonos globales <b>mueven el TO</b> y ajustan la base de
-              mínimos (TM/TMBI/CET), conforme a la normativa.
+              Los abonos globales <b>mueven el TO</b> y ajustan la base de mínimos (TM/TMBI/CET).
             </div>
           </div>
         </div>
@@ -1556,7 +1590,7 @@ export default function CalculadoraCondenas() {
         <div
           style={{
             marginTop: 12,
-            border: "1px solid #e5e7eb",
+            border: `1px solid ${UI_BORDER}`,
             borderRadius: 10,
             padding: 12,
             background: "#fff",
@@ -1595,7 +1629,7 @@ export default function CalculadoraCondenas() {
                   width: "100%",
                   padding: 10,
                   borderRadius: 10,
-                  border: "1px solid #d1d5db",
+                  border: `1px solid ${UI_BORDER}`,
                 }}
                 inputMode="numeric"
                 aria-label="TO objetivo para sugerir distribución"
@@ -1604,14 +1638,7 @@ export default function CalculadoraCondenas() {
           </div>
 
           {/* Botones de distribución */}
-          <div
-            style={{
-              display: "flex",
-              gap: 8,
-              marginTop: 10,
-              flexWrap: "wrap",
-            }}
-          >
+          <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
             <button
               onClick={sugerirDistribucion}
               style={{
@@ -1673,8 +1700,7 @@ export default function CalculadoraCondenas() {
               <div
                 style={{
                   display: "grid",
-                  gridTemplateColumns:
-                    "minmax(120px,1fr) 120px 120px",
+                  gridTemplateColumns: "minmax(120px,1fr) 120px 120px",
                   gap: 8,
                   alignItems: "center",
                 }}
@@ -1684,8 +1710,7 @@ export default function CalculadoraCondenas() {
                 <div style={{ fontSize: 12, color: "#6b7280" }}>Sugerido</div>
                 {causasOrdenadas.map((c) => {
                   const sug =
-                    sugeridos.find((s) => s.id === c.id)?.nuevoAbono ??
-                    c.abonoCausa;
+                    sugeridos.find((s) => s.id === c.id)?.nuevoAbono ?? c.abonoCausa;
                   return (
                     <React.Fragment key={c.id}>
                       <div>{c.nombre || c.id}</div>
@@ -1715,9 +1740,7 @@ export default function CalculadoraCondenas() {
                       padding: 12,
                     }}
                   >
-                    <div style={{ fontSize: 12, color: "#b45309" }}>
-                      TO (previa)
-                    </div>
+                    <div style={{ fontSize: 12, color: "#b45309" }}>TO (previa)</div>
                     <div style={{ fontSize: 18, fontWeight: 800, marginTop: 4 }}>
                       {simulados.terminoOriginal || "—"}
                     </div>
@@ -1730,9 +1753,7 @@ export default function CalculadoraCondenas() {
                       padding: 12,
                     }}
                   >
-                    <div style={{ fontSize: 12, color: "#1d4ed8" }}>
-                      TM (automático)
-                    </div>
+                    <div style={{ fontSize: 12, color: "#1d4ed8" }}>TM (automático)</div>
                     <div style={{ fontSize: 18, fontWeight: 800, marginTop: 4 }}>
                       {simulados.tm || "—"}
                     </div>
@@ -1745,9 +1766,7 @@ export default function CalculadoraCondenas() {
                       padding: 12,
                     }}
                   >
-                    <div style={{ fontSize: 12, color: "#6d28d9" }}>
-                      TMBI (automático)
-                    </div>
+                    <div style={{ fontSize: 12, color: "#6d28d9" }}>TMBI (automático)</div>
                     <div style={{ fontSize: 18, fontWeight: 800, marginTop: 4 }}>
                       {simulados.tmbi || "—"}
                     </div>
@@ -1773,7 +1792,7 @@ export default function CalculadoraCondenas() {
           ) : null}
         </div>
 
-        {/* (3) AJUSTES FINOS (al final) + (4) INGRESOS MANUALES */}
+        {/* (3) AJUSTES FINOS + (4) INGRESOS MANUALES */}
         <div
           style={{
             marginTop: 12,
@@ -1785,7 +1804,7 @@ export default function CalculadoraCondenas() {
           {/* Ajustes finos */}
           <div
             style={{
-              border: "1px solid #e5e7eb",
+              border: `1px solid ${UI_BORDER}`,
               borderRadius: 10,
               padding: 12,
               background: "#fff",
@@ -1803,21 +1822,17 @@ export default function CalculadoraCondenas() {
               }}
             >
               <div>
-                <label
-                  style={{ display: "block", fontSize: 12, color: "#6b7280" }}
-                >
+                <label style={{ display: "block", fontSize: 12, color: "#6b7280" }}>
                   Ajuste fino TM (±1 día)
                 </label>
                 <select
                   value={tmAjuste}
-                  onChange={(e) =>
-                    setTmAjuste(Number(e.target.value) as -1 | 0 | 1)
-                  }
+                  onChange={(e) => setTmAjuste(Number(e.target.value) as -1 | 0 | 1)}
                   style={{
                     width: "100%",
                     padding: 10,
                     borderRadius: 10,
-                    border: "1px solid #d1d5db",
+                    border: `1px solid ${UI_BORDER}`,
                     background: "#fff",
                     cursor: "pointer",
                   }}
@@ -1828,21 +1843,17 @@ export default function CalculadoraCondenas() {
                 </select>
               </div>
               <div>
-                <label
-                  style={{ display: "block", fontSize: 12, color: "#6b7280" }}
-                >
+                <label style={{ display: "block", fontSize: 12, color: "#6b7280" }}>
                   Ajuste fino CET (±1 día)
                 </label>
                 <select
                   value={cetAjuste}
-                  onChange={(e) =>
-                    setCetAjuste(Number(e.target.value) as -1 | 0 | 1)
-                  }
+                  onChange={(e) => setCetAjuste(Number(e.target.value) as -1 | 0 | 1)}
                   style={{
                     width: "100%",
                     padding: 10,
                     borderRadius: 10,
-                    border: "1px solid #d1d5db",
+                    border: `1px solid ${UI_BORDER}`,
                     background: "#fff",
                     cursor: "pointer",
                   }}
@@ -1854,15 +1865,14 @@ export default function CalculadoraCondenas() {
               </div>
             </div>
             <div style={{ marginTop: 6, fontSize: 12, color: "#4b5563" }}>
-              Desplaza la <b>fecha mostrada</b> (no la base de cálculo) para
-              cuadrar expedientes con corrimientos mínimos.
+              Desplaza la <b>fecha mostrada</b> (no la base) para cuadrar expedientes con corrimientos mínimos.
             </div>
           </div>
 
           {/* Ingresos manuales */}
           <div
             style={{
-              border: "1px solid #e5e7eb",
+              border: `1px solid ${UI_BORDER}`,
               borderRadius: 10,
               padding: 12,
               background: "#fff",
@@ -1880,9 +1890,7 @@ export default function CalculadoraCondenas() {
               }}
             >
               <div>
-                <label
-                  style={{ display: "block", fontSize: 12, color: "#6b7280" }}
-                >
+                <label style={{ display: "block", fontSize: 12, color: "#6b7280" }}>
                   TM (manual)
                 </label>
                 <input
@@ -1893,7 +1901,7 @@ export default function CalculadoraCondenas() {
                     width: "100%",
                     padding: 10,
                     borderRadius: 10,
-                    border: "1px solid #d1d5db",
+                    border: `1px solid ${UI_BORDER}`,
                     background: "#fff",
                   }}
                   inputMode="numeric"
@@ -1902,9 +1910,7 @@ export default function CalculadoraCondenas() {
               </div>
 
               <div>
-                <label
-                  style={{ display: "block", fontSize: 12, color: "#6b7280" }}
-                >
+                <label style={{ display: "block", fontSize: 12, color: "#6b7280" }}>
                   TMBI (manual)
                 </label>
                 <input
@@ -1915,7 +1921,7 @@ export default function CalculadoraCondenas() {
                     width: "100%",
                     padding: 10,
                     borderRadius: 10,
-                    border: "1px solid #d1d5db",
+                    border: `1px solid ${UI_BORDER}`,
                     background: "#fff",
                   }}
                   inputMode="numeric"
@@ -1926,11 +1932,11 @@ export default function CalculadoraCondenas() {
           </div>
         </div>
 
-        {/* Módulo de distribución (clásico) visible dentro de avanzadas */}
+        {/* Módulo de distribución */}
         <div
           style={{
             marginTop: 12,
-            border: "1px solid #e5e7eb",
+            border: `1px solid ${UI_BORDER}`,
             borderRadius: 10,
             padding: 12,
             background: "#fff",
@@ -1960,7 +1966,7 @@ export default function CalculadoraCondenas() {
         <div
           style={{
             marginTop: 12,
-            border: "1px solid #e5e7eb",
+            border: `1px solid ${UI_BORDER}`,
             borderRadius: 10,
             padding: 12,
             background: "#fff",
@@ -1975,7 +1981,7 @@ export default function CalculadoraCondenas() {
               style={{
                 padding: "8px 12px",
                 borderRadius: 10,
-                border: "1px solid #d1d5db",
+                border: `1px solid ${UI_BORDER}`,
                 background: "#fff",
                 cursor: "pointer",
               }}
@@ -1987,7 +1993,7 @@ export default function CalculadoraCondenas() {
               style={{
                 padding: "8px 12px",
                 borderRadius: 10,
-                border: "1px solid #d1d5db",
+                border: `1px solid ${UI_BORDER}`,
                 background: "#fff",
                 cursor: "pointer",
               }}
@@ -2028,61 +2034,30 @@ export default function CalculadoraCondenas() {
         </summary>
         <div style={{ marginTop: 8, lineHeight: 1.6, fontSize: 14 }}>
           <p>
-            <b>Inicio:</b> Fecha de partida del cómputo en formato{" "}
-            <b>DD/MM/AAAA</b>. Para mínimos, puede considerarse desde el{" "}
-            <b>día siguiente</b> (vista Oficial) o el mismo día (vista
-            Doctrinal).
+            <b>Inicio:</b> Fecha de partida del cómputo en formato <b>DD/MM/AAAA</b>.
+            Para mínimos, puede considerarse desde el <b>día siguiente</b> (vista Oficial) o el mismo día (vista Doctrinal).
           </p>
           <p>
-            <b>Encadenado:</b> Define cuándo inicia cada causa respecto del
-            término de la anterior.
+            <b>Encadenado:</b> Define cuándo inicia cada causa respecto del término de la anterior.
             <ul>
-              <li>
-                <b>Oficial (día siguiente):</b> cada causa comienza al día
-                siguiente del término de la previa.
-              </li>
-              <li>
-                <b>Doctrinal (mismo día):</b> la siguiente inicia el mismo día
-                del término de la previa (referencia comparativa).
-              </li>
+              <li><b>Oficial (día siguiente):</b> cada causa comienza al día siguiente del término de la previa.</li>
+              <li><b>Doctrinal (mismo día):</b> la siguiente inicia el mismo día del término de la previa (referencia comparativa).</li>
             </ul>
           </p>
           <p>
-            <b>Término Original (TO):</b> Resultado de sumar las causas
-            encadenadas con abonos por causa y descontar el abono global del
-            expediente. No se agrega +1 al final del expediente.
+            <b>Término Original (TO):</b> Sumar causas encadenadas con abonos por causa y descontar el abono global.
           </p>
           <p>
-            <b>Abonos:</b>
-            <ul>
-              <li>
-                <i>Por causa:</i> descuentan días de esa causa y pueden
-                modificar el TO.
-              </li>
-              <li>
-                <i>Global del expediente:</i> reduce el TO (normativa) y ajusta
-                la base de TM.
-              </li>
-            </ul>
+            <b>TM:</b> mínimo según régimen (1/2 o 2/3) aplicado a la <b>base efectiva</b> (después de abonos).
           </p>
           <p>
-            <b>TM:</b> mínimo según régimen (1/2 o 2/3) aplicado a la{" "}
-            <b>base efectiva</b> del expediente (después de abonos).
+            <b>TMBI:</b> referencia normativa <i>TM − 12 meses</i> respetando fin de mes.
           </p>
           <p>
-            <b>TMBI:</b> referencia normativa <i>TM − 12 meses</i> respetando fin
-            de mes.
+            <b>TM CET:</b> es 2/3 del tramo inclusivo entre Inicio y TMBI. Su presentación varía con la vista.
           </p>
           <p>
-            <b>TM CET:</b> es 2/3 del tramo <b>inclusivo</b> entre Inicio y
-            TMBI. Su presentación varía con la vista (Oficial/Doctrinal).
-          </p>
-          <p>
-            <b>Ajustes finos (TM/CET ±1 día):</b> herramienta excepcional para
-            <b> desplazar la fecha mostrada</b> en ±1 día sin alterar la base de
-            cálculo. Útil cuando un expediente quedó con corrimiento mínimo por
-            criterios operativos del sistema. Se configura en <i>Opciones
-            avanzadas</i>.
+            <b>Ajustes finos:</b> desplazan sólo la <b>fecha mostrada</b>, no la base de cálculo.
           </p>
         </div>
       </details>
@@ -2098,7 +2073,7 @@ export default function CalculadoraCondenas() {
         onCancel={closeConfirm}
       />
 
-      {/* Pie: versión y autor */}
+      {/* Pie */}
       <div
         style={{
           marginTop: 16,

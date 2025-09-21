@@ -1,6 +1,7 @@
 {
   "name": "calculadora-condenas",
   "version": "0.1.0",
+  "homepage": "https://oberg04101992-beep.github.io/calculadora-condenas",
   "private": true,
   "dependencies": {
     "@testing-library/dom": "^10.4.1",

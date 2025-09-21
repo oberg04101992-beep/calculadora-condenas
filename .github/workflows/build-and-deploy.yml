@@ -1,5 +1,4 @@
-# .github/workflows/build-and-deploy.yml
-name: build-and-deploy
+name: Deploy CRA to GitHub Pages
 
 on:
   push:
@@ -7,10 +6,12 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
+  pages: write
+  id-token: write
 
 concurrency:
-  group: pages-${{ github.ref }}
+  group: pages
   cancel-in-progress: true
 
 jobs:
@@ -23,25 +24,28 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: "18"
-          cache: "npm"
+          node-version: 20
 
-      - name: Install
+      - name: Install deps
         run: npm ci
 
-      # 🔓 Hotfix: NO romper por ESLint en CI (CRA)
-      # CI=false: evita "warnings como errores"
-      # DISABLE_ESLINT_PLUGIN=true: CRA no ejecuta ESLint durante el build
-      - name: Build
+      - name: Build (CI=false para no fallar por warnings)
         run: npm run build
         env:
-          CI: "false"
-          DISABLE_ESLINT_PLUGIN: "true"
+          CI: false
 
-      - name: Deploy to gh-pages
-        uses: peaceiris/actions-gh-pages@v3
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_branch: gh-pages
-          publish_dir: build
-          force_orphan: true
+          path: build
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

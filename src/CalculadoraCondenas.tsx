@@ -1,4 +1,6 @@
 // src/CalculadoraCondenas.tsx
+import "./CalculadoraCondenas.css";              // estilos del componente
+import { causaLabel } from "./utils/causaLabel"; // helper de nombres (si lo tienes)
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import AbonosDistribucion from "./components/AbonosDistribucion";
 import DisclaimerModal from "./components/DisclaimerModal";
@@ -358,6 +360,20 @@ export default function CalculadoraCondenas() {
     return [...withLen].sort((a, b) => b.len - a.len);
   }, [causas, ordenarGravosaPrimero]);
 
+  /* Rotulación segura: nombre o “Causa N” */
+  const causasConRotulo = useMemo(() => {
+    return causasOrdenadas.map((c, i) => {
+      const fallback = `Causa ${i + 1}`;
+      // Si tienes causaLabel utilízalo; si no, usamos fallback
+      const fromHelper =
+        typeof causaLabel === "function"
+          ? causaLabel(c.nombre, i + 1)
+          : (c.nombre || "").trim();
+      const rotulo = (fromHelper || "").trim() || fallback;
+      return { ...c, _rotulo: rotulo };
+    });
+  }, [causasOrdenadas]);
+
   /* Auto-slash en fechas */
   const autoSlash = (raw: string) => {
     const digits = raw.replace(/[^\d]/g, "").slice(0, 8);
@@ -374,10 +390,11 @@ export default function CalculadoraCondenas() {
   /* Cálculo del encadenado bruto y con abonos por causa */
   const chainActual = useMemo(() => {
     const ini = parseDMYtoUTC(inicio);
-    if (!ini || causasOrdenadas.length === 0)
+    if (!ini || causasConRotulo.length === 0)
       return null as null | ReturnType<typeof encadenarExpediente>;
-    return encadenarExpediente(causasOrdenadas, inicio, encadenado);
-  }, [inicio, causasOrdenadas, encadenado]);
+    // Importante: para encadenar usamos la data ordenada (sin tocar cómputo)
+    return encadenarExpediente(causasConRotulo, inicio, encadenado);
+  }, [inicio, causasConRotulo, encadenado]);
 
   /* ===== Base normativa estricta =====
      Base efectiva = (suma causas con abonos por causa) − abono global  */
@@ -532,7 +549,7 @@ export default function CalculadoraCondenas() {
 
     const ini = parseDMYtoUTC(inicio);
     const objetivo = parseDMYtoUTC(toObjetivo);
-    if (!ini || !objetivo || causasOrdenadas.length === 0) {
+    if (!ini || !objetivo || causasConRotulo.length === 0) {
       setSugerenciaInfo({
         tipo: "error",
         mensaje:
@@ -549,7 +566,7 @@ export default function CalculadoraCondenas() {
     }
 
     // total brutos (sin abonos por causa)
-    const totalBrutos = causasOrdenadas.reduce((acc, c) => {
+    const totalBrutos = causasConRotulo.reduce((acc, c) => {
       const fin = finDeCausa(ini, c.anios || 0, c.meses || 0, c.dias || 0);
       return acc + diffDaysInclusiveUTC(ini, fin);
     }, 0);
@@ -559,7 +576,7 @@ export default function CalculadoraCondenas() {
     const neededDurSum =
       encadenado === "dia_siguiente"
         ? diffObj
-        : diffObj + (causasOrdenadas.length - 1);
+        : diffObj + (causasConRotulo.length - 1);
 
     const abonosNecesarios = totalBrutos - neededDurSum;
 
@@ -573,7 +590,7 @@ export default function CalculadoraCondenas() {
     }
 
     // Estrategia greedy: más gravosa primero
-    const sorted = [...causasOrdenadas].sort(
+    const sorted = [...causasConRotulo].sort(
       (a, b) => duracionCausaRealDias(b) - duracionCausaRealDias(a)
     );
     let rem = abonosNecesarios;
@@ -591,7 +608,7 @@ export default function CalculadoraCondenas() {
       rem -= take;
     }
 
-    const sugeridosOrdenOriginal = causasOrdenadas.map((c) => {
+    const sugeridosOrdenOriginal = causasConRotulo.map((c) => {
       const e = dish.find((d) => d.id === c.id)!;
       return { id: c.id, nuevoAbono: e.nuevoAbono };
     });
@@ -620,10 +637,10 @@ export default function CalculadoraCondenas() {
     updates: { id: string; nuevoAbono: number }[]
   ): Resultados {
     const ini = parseDMYtoUTC(inicio);
-    if (!ini || causasOrdenadas.length === 0)
+    if (!ini || causasConRotulo.length === 0)
       return { terminoOriginal: "", tm: "", tmbi: "", tmCet: "" };
 
-    const causasTemp = causasOrdenadas.map((c) => {
+    const causasTemp = causasConRotulo.map((c) => {
       const up = updates.find((u) => u.id === c.id);
       return up ? { ...c, abonoCausa: up.nuevoAbono } : c;
     });
@@ -791,13 +808,14 @@ export default function CalculadoraCondenas() {
 
     lines.push("");
     lines.push(
-      ["Causas", "ID/Nombre", "Años", "Meses", "Días", "Abono por causa", "Régimen"].join(sep)
+      ["Causas", "Causa", "Años", "Meses", "Días", "Abono por causa", "Régimen"].join(sep)
     );
-    causasOrdenadas.forEach((c) => {
+    causasConRotulo.forEach((c, i) => {
+      const rot = c._rotulo || c.nombre || `Causa ${i + 1}`;
       lines.push(
         [
           "Causas",
-          esc(c.nombre || c.id),
+          esc(rot),
           c.anios,
           c.meses,
           c.dias,
@@ -955,8 +973,51 @@ export default function CalculadoraCondenas() {
 
   /* =================== UI =================== */
   return (
-    <div style={{ maxWidth: 1100, margin: "0 auto", padding: 16 }}>
-      <style>{`@media print{button,summary,details:not([open]){display:none!important} .print-block{break-inside:avoid;}}`}</style>
+    <div className="calc-root" style={{ maxWidth: 1100, margin: "0 auto", padding: 16 }}>
+      <style>{`
+        /* Evita Times: fuerza fuente del sistema SOLO en este módulo */
+        .calc-root, .calc-root * {
+          font-family: system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol' !important;
+        }
+        @media print {
+          button, summary, details:not([open]) { display:none!important }
+          .print-block{ break-inside: avoid; }
+        }
+        /* Grid Causas responsive */
+        .causas-grid-head, .causas-grid-body {
+          display: grid;
+          grid-template-columns: 140px 80px 80px 80px 120px 150px 140px 40px; /* Causa + 7 cols */
+          gap: 8px;
+          align-items: center;
+        }
+        .causas-grid-head div {
+          font-size: 12px; color: #6b7280;
+        }
+        @media (max-width: 860px) {
+          .causas-grid-head, .causas-grid-body {
+            grid-template-columns: 1fr 1fr; /* En móvil se apila de forma legible */
+          }
+          .causa-chip {
+            grid-column: 1 / -1;
+            margin: 4px 0;
+            font-weight: 600;
+          }
+        }
+        .causa-chip{
+          display:inline-flex;
+          align-items:center;
+          padding:6px 10px;
+          border-radius:999px;
+          border:1px solid #e5e7eb;
+          background:#f9fafb;
+          font-size:12px;
+          color:#111827;
+          max-width:100%;
+          overflow:hidden;
+          text-overflow:ellipsis;
+          white-space:nowrap;
+        }
+      `}</style>
 
       {/* Modal de advertencia (siempre al abrir) */}
       <DisclaimerModal />
@@ -1231,27 +1292,28 @@ export default function CalculadoraCondenas() {
           + Agregar causa
         </button>
 
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "80px 80px 80px 120px 150px 140px 40px",
-            gap: 8,
-            alignItems: "center",
-            marginTop: 10,
-          }}
-        >
-          <div style={{ fontSize: 12, color: "#6b7280" }}>Años</div>
-          <div style={{ fontSize: 12, color: "#6b7280" }}>Meses</div>
-          <div style={{ fontSize: 12, color: "#6b7280" }}>Días</div>
-          <div style={{ fontSize: 12, color: "#6b7280" }}>Régimen</div>
-          <div style={{ fontSize: 12, color: "#6b7280" }}>Abono por causa</div>
-          <div style={{ fontSize: 12, color: "#6b7280" }}>
-            Nombre (opcional)
-          </div>
+        {/* Encabezados */}
+        <div className="causas-grid-head" style={{ marginTop: 10 }}>
+          <div>Causa</div>
+          <div>Años</div>
+          <div>Meses</div>
+          <div>Días</div>
+          <div>Régimen</div>
+          <div>Abono por causa</div>
+          <div>Nombre (opcional)</div>
           <div></div>
+        </div>
 
-          {causasOrdenadas.map((c) => (
+        {/* Filas */}
+        <div className="causas-grid-body" style={{ marginTop: 6 }}>
+          {causasConRotulo.map((c, idx) => (
             <React.Fragment key={c.id}>
+              {/* Col 1: etiqueta compacta siempre visible */}
+              <div className="causa-chip" title={c._rotulo}>
+                {c._rotulo}
+              </div>
+
+              {/* Col 2: años */}
               <input
                 type="number"
                 value={c.anios}
@@ -1264,8 +1326,10 @@ export default function CalculadoraCondenas() {
                   borderRadius: 8,
                   border: "1px solid #d1d5db",
                 }}
-                aria-label="Años de la causa"
+                aria-label={`Años de ${c._rotulo}`}
               />
+
+              {/* Col 3: meses */}
               <input
                 type="number"
                 value={c.meses}
@@ -1278,8 +1342,10 @@ export default function CalculadoraCondenas() {
                   borderRadius: 8,
                   border: "1px solid #d1d5db",
                 }}
-                aria-label="Meses de la causa"
+                aria-label={`Meses de ${c._rotulo}`}
               />
+
+              {/* Col 4: días */}
               <input
                 type="number"
                 value={c.dias}
@@ -1292,8 +1358,10 @@ export default function CalculadoraCondenas() {
                   borderRadius: 8,
                   border: "1px solid #d1d5db",
                 }}
-                aria-label="Días de la causa"
+                aria-label={`Días de ${c._rotulo}`}
               />
+
+              {/* Col 5: régimen */}
               <div style={{ display: "flex", gap: 8 }}>
                 <label style={{ display: "flex", gap: 6, alignItems: "center" }}>
                   <input
@@ -1314,6 +1382,8 @@ export default function CalculadoraCondenas() {
                   2/3
                 </label>
               </div>
+
+              {/* Col 6: abono x causa */}
               <input
                 type="number"
                 value={c.abonoCausa}
@@ -1330,8 +1400,10 @@ export default function CalculadoraCondenas() {
                   borderRadius: 8,
                   border: "1px solid #d1d5db",
                 }}
-                aria-label="Abono por causa"
+                aria-label={`Abono por causa de ${c._rotulo}`}
               />
+
+              {/* Col 7: nombre opcional (para que pueda reemplazar “Causa N”) */}
               <input
                 value={c.nombre || ""}
                 onChange={(e) => handleChangeCausa(c.id, "nombre", e.target.value)}
@@ -1342,8 +1414,10 @@ export default function CalculadoraCondenas() {
                   borderRadius: 8,
                   border: "1px solid #d1d5db",
                 }}
-                aria-label="Nombre de la causa"
+                aria-label={`Nombre opcional de ${c._rotulo}`}
               />
+
+              {/* Col 8: eliminar */}
               <button
                 onClick={() => handleRemoveCausa(c.id)}
                 title="Eliminar causa"
@@ -1355,7 +1429,7 @@ export default function CalculadoraCondenas() {
                   background: "#fff",
                   cursor: "pointer",
                 }}
-                aria-label="Eliminar causa"
+                aria-label={`Eliminar ${c._rotulo}`}
               >
                 🗑️
               </button>
@@ -1507,7 +1581,7 @@ export default function CalculadoraCondenas() {
           Ejemplo simplificado (paso a paso)
         </summary>
         <div style={{ marginTop: 8, fontSize: 14, lineHeight: 1.55 }}>
-          {!inicio || causasOrdenadas.length === 0 ? (
+          {!inicio || causasConRotulo.length === 0 ? (
             <div style={{ fontSize: 12, color: "#6b7280" }}>
               Ingresa <b>Inicio</b> y al menos <b>una causa</b> para ver la explicación dinámica.
             </div>
@@ -1953,13 +2027,12 @@ export default function CalculadoraCondenas() {
                 <div style={{ fontSize: 12, color: "#6b7280" }}>Causa</div>
                 <div style={{ fontSize: 12, color: "#6b7280" }}>Actual</div>
                 <div style={{ fontSize: 12, color: "#6b7280" }}>Sugerido</div>
-                {causasOrdenadas.map((c) => {
+                {causasConRotulo.map((c) => {
                   const sug =
-                    sugeridos.find((s) => s.id === c.id)?.nuevoAbono ??
-                    c.abonoCausa;
+                    sugeridos.find((s) => s.id === c.id)?.nuevoAbono ?? c.abonoCausa;
                   return (
                     <React.Fragment key={c.id}>
-                      <div>{c.nombre || c.id}</div>
+                      <div>{c._rotulo}</div>
                       <div>{c.abonoCausa}</div>
                       <div>{sug}</div>
                     </React.Fragment>
@@ -2212,7 +2285,13 @@ export default function CalculadoraCondenas() {
           </div>
           <UIErrorBoundary>
             {React.createElement(AbonosDistribucion as any, {
-              causas: Array.isArray(causasOrdenadas) ? causasOrdenadas : [],
+              // Pasamos nombres limpios: si no hay nombre, enviamos “Causa N”
+              causas: Array.isArray(causasConRotulo)
+                ? causasConRotulo.map((c, i) => ({
+                    ...c,
+                    nombre: (c.nombre && c.nombre.trim()) || c._rotulo || `Causa ${i + 1}`,
+                  }))
+                : [],
               inicio,
               encadenado,
               onAbonoChange: (id: string, nuevoAbono: number) =>

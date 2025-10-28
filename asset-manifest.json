@@ -1,13 +1,13 @@
 {
   "files": {
-    "main.css": "/static/css/main.d788de39.css",
-    "main.js": "/static/js/main.08b9615d.js",
-    "index.html": "/index.html",
-    "main.d788de39.css.map": "/static/css/main.d788de39.css.map",
-    "main.08b9615d.js.map": "/static/js/main.08b9615d.js.map"
+    "main.css": "/calculadora-condenas/static/css/main.376faf85.css",
+    "main.js": "/calculadora-condenas/static/js/main.0ef2d9bb.js",
+    "index.html": "/calculadora-condenas/index.html",
+    "main.376faf85.css.map": "/calculadora-condenas/static/css/main.376faf85.css.map",
+    "main.0ef2d9bb.js.map": "/calculadora-condenas/static/js/main.0ef2d9bb.js.map"
   },
   "entrypoints": [
-    "static/css/main.d788de39.css",
-    "static/js/main.08b9615d.js"
+    "static/css/main.376faf85.css",
+    "static/js/main.0ef2d9bb.js"
   ]
 }

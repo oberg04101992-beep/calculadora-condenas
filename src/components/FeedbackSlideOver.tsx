@@ -1,112 +1,92 @@
-import { useEffect, useState } from "react";
+// src/components/FeedbackSlideOver.tsx
+import React, { useState } from "react";
 import FeedbackPanel from "./FeedbackPanel";
 
-type Props = {
-  gasUrl: string;
-  /** Texto del botón flotante. Por defecto: "Comentarios". */
-  label?: string;
-  /** Función para obtener snapshot técnico (TO/TM/TMBI/TM CET, régimen, causas, etc.). */
-  getSnapshot?: () => any;
-};
+type Props = { gasUrl: string };
 
-export default function FeedbackSlideOver({ gasUrl, label = "Comentarios", getSnapshot }: Props) {
+export default function FeedbackSlideOver({ gasUrl }: Props) {
   const [open, setOpen] = useState(false);
 
-  // Cierre con tecla ESC
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false);
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open]);
+  // ejemplo: snapshot opcional del estado de la UI
+  const getSnapshot = () => {
+    try {
+      const raw = localStorage.getItem("calc_state_v6");
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
+  };
 
   return (
     <>
-      {/* Botón flotante moderno */}
       <button
         onClick={() => setOpen(true)}
-        aria-label="Abrir comentarios"
         style={{
           position: "fixed",
-          right: 20,
-          bottom: 20,
-          zIndex: 1040,
-          border: "none",
-          borderRadius: 999,
+          right: 16,
+          bottom: 16,
           padding: "10px 14px",
-          background: "#111827", // negro suave
+          borderRadius: 999,
+          background: "#111827",
           color: "#fff",
-          boxShadow: "0 10px 20px rgba(0,0,0,0.2)",
+          border: "1px solid #111827",
+          boxShadow: "0 8px 24px rgba(0,0,0,0.15)",
           cursor: "pointer",
-          display: "flex",
-          gap: 8,
-          alignItems: "center",
+          zIndex: 50,
         }}
+        aria-label="Abrir panel de comentarios"
+        title="Enviar comentario"
       >
-        <span aria-hidden>💬</span>
-        <span style={{ fontWeight: 600 }}>{label}</span>
+        Comentarios
       </button>
 
-      {/* Slide-over */}
-      {open && (
-        <div style={{ position: "fixed", inset: 0 as any, zIndex: 1050 }}>
-          {/* backdrop */}
+      {open ? (
+        <div
+          role="dialog"
+          aria-modal="true"
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,.35)",
+            zIndex: 60,
+            display: "flex",
+            justifyContent: "flex-end",
+          }}
+          onClick={() => setOpen(false)}
+        >
           <div
-            onClick={() => setOpen(false)}
-            aria-hidden
+            onClick={(e) => e.stopPropagation()}
             style={{
-              position: "absolute",
-              inset: 0,
-              background: "rgba(0,0,0,0.4)",
-              backdropFilter: "blur(1px)",
-            }}
-          />
-          {/* panel */}
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-label="Formulario de comentarios"
-            style={{
-              position: "absolute",
-              top: 0,
-              right: 0,
+              width: "min(480px, 100%)",
               height: "100%",
-              width: "100%",
-              maxWidth: 420,
               background: "#fff",
-              boxShadow: "-12px 0 30px rgba(0,0,0,0.18)",
+              borderLeft: "1px solid #e5e7eb",
               display: "flex",
               flexDirection: "column",
             }}
           >
-            {/* header */}
             <div
               style={{
-                padding: "12px 16px",
+                padding: 12,
                 borderBottom: "1px solid #e5e7eb",
                 display: "flex",
-                alignItems: "center",
                 justifyContent: "space-between",
+                alignItems: "center",
               }}
             >
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <span aria-hidden>💡</span>
-                <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>Envíanos tus comentarios</h2>
-              </div>
+              <div style={{ fontWeight: 700 }}>Envíanos tu comentario</div>
               <button
                 onClick={() => setOpen(false)}
                 aria-label="Cerrar"
                 style={{
+                  padding: 8,
+                  borderRadius: 8,
                   border: "1px solid #d1d5db",
                   background: "#fff",
-                  borderRadius: 8,
-                  padding: "4px 8px",
                   cursor: "pointer",
                 }}
               >
-                Cerrar
+                ✕
               </button>
             </div>
 
@@ -116,7 +96,7 @@ export default function FeedbackSlideOver({ gasUrl, label = "Comentarios", getSn
             </div>
           </div>
         </div>
-      )}
+      ) : null}
     </>
   );
 }

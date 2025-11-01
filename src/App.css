@@ -19,3 +19,32 @@ button { border-radius: var(--radius); }
 .mt-8 { margin-top: 8px; }
 .mt-12 { margin-top: 12px; }
 .mt-16 { margin-top: 16px; }
+
+/* Evita desbordes horizontales en móvil */
+html, body, #root { height: 100%; }
+body { margin: 0; overflow-x: hidden; }
+
+/* Contenedor principal “fluido” */
+.container {
+  max-width: 920px;
+  margin: 1rem auto;
+  padding: 0 12px; /* respiración lateral en móvil */
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+}
+
+/* Grid responsivo para tarjetas */
+.cards {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+/* Controles cómodos al tacto */
+input, select, button {
+  min-height: 40px;
+}
+
+/* Corte para pantallas muy pequeñas (≤360px) */
+@media (max-width: 360px) {
+  .cards { grid-template-columns: 1fr; }
+}

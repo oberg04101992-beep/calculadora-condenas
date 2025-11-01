@@ -1,9 +1,9 @@
 import React from "react";
 
-type ConfirmDialogProps = {
+type Props = {
   open: boolean;
-  title?: string;
-  message?: string;
+  title: string;
+  message: string;
   confirmText?: string;
   cancelText?: string;
   onConfirm: () => void;
@@ -12,48 +12,49 @@ type ConfirmDialogProps = {
 
 export default function ConfirmDialog({
   open,
-  title = "Confirmar acción",
-  message = "¿Estás seguro de continuar?",
-  confirmText = "Eliminar",
+  title,
+  message,
+  confirmText = "Confirmar",
   cancelText = "Cancelar",
   onConfirm,
   onCancel,
-}: ConfirmDialogProps) {
+}: Props) {
   if (!open) return null;
-
   return (
     <div
-      aria-modal
       role="dialog"
+      aria-modal="true"
       style={{
         position: "fixed",
         inset: 0,
-        zIndex: 60,
+        background: "rgba(0,0,0,.25)",
         display: "grid",
         placeItems: "center",
-        background: "rgba(0,0,0,0.45)",
-        padding: 16,
+        zIndex: 50,
       }}
-      onClick={onCancel}
     >
       <div
-        onClick={(e) => e.stopPropagation()}
         style={{
-          width: "100%",
-          maxWidth: 420,
+          width: "min(92vw, 420px)",
           background: "#fff",
           borderRadius: 12,
           border: "1px solid #e5e7eb",
-          boxShadow: "0 10px 30px rgba(0,0,0,0.12)",
           padding: 16,
+          boxShadow: "0 10px 30px rgba(0,0,0,.15)",
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-          <span aria-hidden>⚠️</span>
-          <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700 }}>{title}</h3>
+        <div style={{ fontWeight: 800, fontSize: 16 }}>{title}</div>
+        <div style={{ marginTop: 8, fontSize: 14, color: "#374151" }}>
+          {message}
         </div>
-        <p style={{ margin: "8px 0 16px 0", color: "#374151", textAlign: "justify" }}>{message}</p>
-        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+        <div
+          style={{
+            marginTop: 14,
+            display: "flex",
+            gap: 8,
+            justifyContent: "flex-end",
+          }}
+        >
           <button
             onClick={onCancel}
             style={{

@@ -1,7 +1,8 @@
 import React from "react";
 import CalculadoraCondenas from "./CalculadoraCondenas";
-import "./App.css";
 
-export default function App() {
+function App() {
   return <CalculadoraCondenas />;
 }
+
+export default App;

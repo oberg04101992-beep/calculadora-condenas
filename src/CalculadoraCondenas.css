@@ -1,0 +1,12 @@
+/* src/CalculadoraCondenas.css
+   No declaramos font-family aquí para no sobreescribir la fuente global. */
+
+.print-block {
+  break-inside: avoid;
+}
+
+@media print {
+  button, summary, details:not([open]) {
+    display: none !important;
+  }
+}

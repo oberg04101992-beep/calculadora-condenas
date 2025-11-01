@@ -1,11 +1,11 @@
 // src/CalculadoraCondenas.tsx
-import "./CalculadoraCondenas.css";              // estilos del componente
-import { causaLabel } from "./utils/causaLabel"; // helper de nombres (si lo tienes)
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import "./CalculadoraCondenas.css";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import AbonosDistribucion from "./components/AbonosDistribucion";
 import DisclaimerModal from "./components/DisclaimerModal";
 import FeedbackSlideOver from "./components/FeedbackSlideOver";
 import ConfirmDialog from "./components/ConfirmDialog";
+import { causaLabel } from "./utils/causaLabel";
 
 /** Contenedor de errores para aislar fallos del módulo de distribución */
 class UIErrorBoundary extends React.Component<
@@ -64,7 +64,7 @@ type Resultados = {
   tmCet: string;
   _debug?: {
     diasBrutosTotales: number;
-    diasConAbonosTermino: number; // Base efectiva (incluye global)
+    diasConAbonosTermino: number;
   };
 };
 
@@ -92,7 +92,6 @@ function parseDMYtoUTC(s?: string | null): Date | null {
 }
 const addDaysUTC = (d: Date, n: number) => new Date(d.getTime() + n * DAY);
 
-/** Suma/resta años/meses respetando fin de mes (normativa) */
 function addYearsMonthsUTC(d: Date, years: number, months: number): Date {
   const y = d.getUTCFullYear();
   const m = d.getUTCMonth();
@@ -106,7 +105,6 @@ function addYearsMonthsUTC(d: Date, years: number, months: number): Date {
   );
 }
 
-/** Días inclusivos [a → b] */
 function diffDaysInclusiveUTC(a: Date, b: Date): number {
   const A = Date.UTC(a.getUTCFullYear(), a.getUTCMonth(), a.getUTCDate());
   const B = Date.UTC(b.getUTCFullYear(), b.getUTCMonth(), b.getUTCDate());
@@ -134,7 +132,6 @@ function encadenarExpediente(
   let totalConAbonos = 0;
 
   for (const c of causas) {
-    // tramo bruto
     const endBruto = finDeCausa(
       startBruto,
       c.anios || 0,
@@ -143,7 +140,6 @@ function encadenarExpediente(
     );
     const durBruto = diffDaysInclusiveUTC(startBruto, endBruto);
 
-    // tramo con abonos por causa (no aplica global aquí)
     const ab = Math.max(0, c.abonoCausa || 0);
     const durConAbonos = Math.max(0, durBruto - ab);
     const endConAbonos =
@@ -154,7 +150,6 @@ function encadenarExpediente(
     totalBrutos += durBruto;
     totalConAbonos += durConAbonos;
 
-    // siguiente inicio
     if (encadenado === "dia_siguiente") {
       startBruto = addDaysUTC(endBruto, 1);
       startAbono = addDaysUTC(endConAbonos, 1);
@@ -209,11 +204,11 @@ export default function CalculadoraCondenas() {
   /* Opciones avanzadas */
   const [abonosTotalesExpediente, setAbonosTotalesExpediente] = useState(0);
 
-  // Ingresos manuales (operativa): TM y TMBI (opcionales)
+  // Ingresos manuales (operativa)
   const [tmIngresado, setTmIngresado] = useState<string>("");
   const [tmbiIngresado, setTmbiIngresado] = useState<string>("");
 
-  // Ajustes finos (±1) de presentación
+  // Ajustes finos (±1)
   const [tmAjuste, setTmAjuste] = useState<-1 | 0 | 1>(0);
   const [cetAjuste, setCetAjuste] = useState<-1 | 0 | 1>(0);
 
@@ -263,6 +258,13 @@ export default function CalculadoraCondenas() {
       return false;
     }
   });
+  const [comoOpen, setComoOpen] = React.useState<boolean>(() => {
+    try {
+      return localStorage.getItem("comoOpen") === "1";
+    } catch {
+      return false;
+    }
+  });
   useEffect(() => {
     try {
       localStorage.setItem("ejemploOpen", ejemploOpen ? "1" : "0");
@@ -278,6 +280,11 @@ export default function CalculadoraCondenas() {
       localStorage.setItem("abonarOpen", abonarOpen ? "1" : "0");
     } catch {}
   }, [abonarOpen]);
+  useEffect(() => {
+    try {
+      localStorage.setItem("comoOpen", comoOpen ? "1" : "0");
+    } catch {}
+  }, [comoOpen]);
 
   /* Autoguardado (load) */
   useEffect(() => {
@@ -344,11 +351,21 @@ export default function CalculadoraCondenas() {
     return causas.some((c) => c.regimen === "2/3") ? "2/3" : "1/2";
   }, [causas]);
 
-  /* Derivado: régimen aplicado (informativo) */
   const regimenAplicado = useMemo<Regimen>(() => {
     if (!regimenGlobal) return "2/3";
     return regimenGlobal;
   }, [regimenGlobal]);
+
+  // ←–––––––––– NUEVO: callback estable para el warning de deps ––––––––––→
+  const duracionCausaRealDias = useCallback(
+    (c: Causa) => {
+      const ini = parseDMYtoUTC(inicio);
+      if (!ini) return 0;
+      const fin = finDeCausa(ini, c.anios || 0, c.meses || 0, c.dias || 0);
+      return diffDaysInclusiveUTC(ini, fin);
+    },
+    [inicio]
+  );
 
   /* Orden visual de causas */
   const causasOrdenadas = useMemo(() => {
@@ -357,22 +374,8 @@ export default function CalculadoraCondenas() {
       len: duracionCausaRealDias(c),
     }));
     if (!ordenarGravosaPrimero) return withLen;
-    return [...withLen].sort((a, b) => b.len - a.len);
-  }, [causas, ordenarGravosaPrimero]);
-
-  /* Rotulación segura: nombre o “Causa N” */
-  const causasConRotulo = useMemo(() => {
-    return causasOrdenadas.map((c, i) => {
-      const fallback = `Causa ${i + 1}`;
-      // Si tienes causaLabel utilízalo; si no, usamos fallback
-      const fromHelper =
-        typeof causaLabel === "function"
-          ? causaLabel(c.nombre, i + 1)
-          : (c.nombre || "").trim();
-      const rotulo = (fromHelper || "").trim() || fallback;
-      return { ...c, _rotulo: rotulo };
-    });
-  }, [causasOrdenadas]);
+    return [...withLen].sort((a, b) => (b.len ?? 0) - (a.len ?? 0));
+  }, [causas, ordenarGravosaPrimero, duracionCausaRealDias]);
 
   /* Auto-slash en fechas */
   const autoSlash = (raw: string) => {
@@ -387,17 +390,13 @@ export default function CalculadoraCondenas() {
     [inicio]
   );
 
-  /* Cálculo del encadenado bruto y con abonos por causa */
   const chainActual = useMemo(() => {
     const ini = parseDMYtoUTC(inicio);
-    if (!ini || causasConRotulo.length === 0)
+    if (!ini || causasOrdenadas.length === 0)
       return null as null | ReturnType<typeof encadenarExpediente>;
-    // Importante: para encadenar usamos la data ordenada (sin tocar cómputo)
-    return encadenarExpediente(causasConRotulo, inicio, encadenado);
-  }, [inicio, causasConRotulo, encadenado]);
+    return encadenarExpediente(causasOrdenadas, inicio, encadenado);
+  }, [inicio, causasOrdenadas, encadenado]);
 
-  /* ===== Base normativa estricta =====
-     Base efectiva = (suma causas con abonos por causa) − abono global  */
   const baseEfectivaDias = useMemo(() => {
     if (!chainActual) return 0;
     return Math.max(
@@ -406,21 +405,17 @@ export default function CalculadoraCondenas() {
     );
   }, [chainActual, abonosTotalesExpediente]);
 
-  /* TO normativo: Inicio + (Base efectiva − 1) */
   const toNormativo = useMemo(() => {
     const ini = parseDMYtoUTC(inicio);
     if (!ini || baseEfectivaDias <= 0) return "";
     return fmtDMY(addDaysUTC(ini, baseEfectivaDias - 1));
   }, [inicio, baseEfectivaDias]);
 
-  /* TM/TMBI/CET automáticos (con override manual opcional en TM/TMBI) */
   const tmAuto = useMemo(() => {
     const ini = parseDMYtoUTC(inicio);
     if (!ini || baseEfectivaDias <= 0) return "";
     const ratio = regimenAplicado === "1/2" ? 1 / 2 : 2 / 3;
     const diasTM = Math.ceil(baseEfectivaDias * ratio);
-
-    // Vista Oficial: equivalente exclusiva (día 1 = día siguiente)
     const startForTM = vistaMinimos === "oficial" ? addDaysUTC(ini, 1) : ini;
     const llegada = addDaysUTC(startForTM, Math.max(0, diasTM - 1));
     return fmtDMY(llegada);
@@ -431,7 +426,6 @@ export default function CalculadoraCondenas() {
     [tmIngresado, tmAuto]
   );
 
-  // TMBI desde TM (manual o auto) – normativa: TM − 12 meses (con fin de mes)
   const tmbiAuto = useMemo(() => {
     const tmD = parseDMYtoUTC(tmMostrado || tmAuto);
     if (!tmD) return "";
@@ -443,20 +437,18 @@ export default function CalculadoraCondenas() {
     [tmbiIngresado, tmbiAuto]
   );
 
-  // CET automático desde Inicio → TMBI (inclusivo) con ceil
   const cetAuto = useMemo(() => {
     const ini = parseDMYtoUTC(inicio);
     const tmbi = parseDMYtoUTC(tmbiMostrado);
     if (!ini || !tmbi) return "";
     const L = Math.max(1, diffDaysInclusiveUTC(ini, tmbi));
-    const diasCET = Math.ceil(L * (2 / 3)); // recomendación: ceil
+    const diasCET = Math.ceil(L * (2 / 3));
     const llegada = addDaysUTC(ini, Math.max(0, diasCET - 1));
     const mostrar =
       vistaMinimos === "oficial" ? addDaysUTC(llegada, -1) : llegada;
     return fmtDMY(mostrar);
   }, [inicio, tmbiMostrado, vistaMinimos]);
 
-  /* Ajuste fino (±1) solo de presentación (no toca base) */
   const tmDisplay = useMemo(() => {
     const d = parseDMYtoUTC(tmMostrado);
     if (!d) return "";
@@ -469,7 +461,6 @@ export default function CalculadoraCondenas() {
     return fmtDMY(addDaysUTC(d, cetAjuste));
   }, [cetAuto, cetAjuste]);
 
-  /* Métricas auxiliares (L y CET días) */
   const metricas = useMemo(() => {
     const ini = parseDMYtoUTC(inicio);
     const tmbi = parseDMYtoUTC(tmbiMostrado);
@@ -479,7 +470,6 @@ export default function CalculadoraCondenas() {
     return { L, diasCET };
   }, [inicio, tmbiMostrado]);
 
-  /* Resultados para tarjetas */
   const resultados = useMemo<Resultados>(() => {
     return {
       terminoOriginal: toNormativo || "",
@@ -522,14 +512,6 @@ export default function CalculadoraCondenas() {
   };
   const handleRemoveCausa = (id: string) => openConfirm(id);
 
-  function duracionCausaRealDias(c: Causa) {
-    const ini = parseDMYtoUTC(inicio);
-    if (!ini) return 0;
-    const fin = finDeCausa(ini, c.anios || 0, c.meses || 0, c.dias || 0);
-    return diffDaysInclusiveUTC(ini, fin);
-  }
-
-  /* Totales de abonos */
   const totalAbonosPorCausa = useMemo(
     () => causas.reduce((s, c) => s + Math.max(0, c.abonoCausa || 0), 0),
     [causas]
@@ -549,7 +531,7 @@ export default function CalculadoraCondenas() {
 
     const ini = parseDMYtoUTC(inicio);
     const objetivo = parseDMYtoUTC(toObjetivo);
-    if (!ini || !objetivo || causasConRotulo.length === 0) {
+    if (!ini || !objetivo || causasOrdenadas.length === 0) {
       setSugerenciaInfo({
         tipo: "error",
         mensaje:
@@ -565,18 +547,16 @@ export default function CalculadoraCondenas() {
       return;
     }
 
-    // total brutos (sin abonos por causa)
-    const totalBrutos = causasConRotulo.reduce((acc, c) => {
+    const totalBrutos = causasOrdenadas.reduce((acc, c) => {
       const fin = finDeCausa(ini, c.anios || 0, c.meses || 0, c.dias || 0);
       return acc + diffDaysInclusiveUTC(ini, fin);
     }, 0);
 
-    // Días deseados según encadenado (inclusivo + ajuste doctrinal)
     const diffObj = diffDaysInclusiveUTC(ini, objetivo);
     const neededDurSum =
       encadenado === "dia_siguiente"
         ? diffObj
-        : diffObj + (causasConRotulo.length - 1);
+        : diffObj + (causasOrdenadas.length - 1);
 
     const abonosNecesarios = totalBrutos - neededDurSum;
 
@@ -589,8 +569,7 @@ export default function CalculadoraCondenas() {
       return;
     }
 
-    // Estrategia greedy: más gravosa primero
-    const sorted = [...causasConRotulo].sort(
+    const sorted = [...causasOrdenadas].sort(
       (a, b) => duracionCausaRealDias(b) - duracionCausaRealDias(a)
     );
     let rem = abonosNecesarios;
@@ -608,7 +587,7 @@ export default function CalculadoraCondenas() {
       rem -= take;
     }
 
-    const sugeridosOrdenOriginal = causasConRotulo.map((c) => {
+    const sugeridosOrdenOriginal = causasOrdenadas.map((c) => {
       const e = dish.find((d) => d.id === c.id)!;
       return { id: c.id, nuevoAbono: e.nuevoAbono };
     });
@@ -637,10 +616,10 @@ export default function CalculadoraCondenas() {
     updates: { id: string; nuevoAbono: number }[]
   ): Resultados {
     const ini = parseDMYtoUTC(inicio);
-    if (!ini || causasConRotulo.length === 0)
+    if (!ini || causasOrdenadas.length === 0)
       return { terminoOriginal: "", tm: "", tmbi: "", tmCet: "" };
 
-    const causasTemp = causasConRotulo.map((c) => {
+    const causasTemp = causasOrdenadas.map((c) => {
       const up = updates.find((u) => u.id === c.id);
       return up ? { ...c, abonoCausa: up.nuevoAbono } : c;
     });
@@ -746,11 +725,9 @@ export default function CalculadoraCondenas() {
     const esc = (v: string | number | null | undefined) => {
       const s = String(v ?? "");
       return s.includes(sep) || s.includes('"') || s.includes("\n")
-        ? `"${s.replace(/"/g, '""')}"`
-        : s;
+        ? `"${s.replace(/"/g, '""')}"` : s;
     };
     const lines: string[] = [];
-
     lines.push(["Sección", "Campo", "Valor"].join(sep));
     lines.push(["Resumen", "Inicio", esc(inicio)].join(sep));
     lines.push(["Resumen", "TO", esc(resultados.terminoOriginal)].join(sep));
@@ -758,73 +735,45 @@ export default function CalculadoraCondenas() {
     lines.push(["Resumen", "TMBI", esc(resultados.tmbi)].join(sep));
     lines.push(["Resumen", "TM CET", esc(resultados.tmCet)].join(sep));
     lines.push(["Resumen", "Régimen aplicado", esc(regimenAplicado)].join(sep));
-    lines.push([
-      "Resumen",
-      "Régimen sugerido por causas",
-      esc(regimenSugeridoPorCausas),
-    ].join(sep));
+    lines.push(["Resumen","Régimen sugerido por causas",esc(regimenSugeridoPorCausas)].join(sep));
     lines.push([
       "Resumen",
       "Encadenado",
-      esc(
-        encadenado === "dia_siguiente"
-          ? "Oficial (día siguiente)"
-          : "Doctrinal (mismo día)"
-      ),
+      esc(encadenado === "dia_siguiente" ? "Oficial (día siguiente)" : "Doctrinal (mismo día)"),
     ].join(sep));
     lines.push([
       "Resumen",
       "Vista de mínimos",
-      esc(
-        vistaMinimos === "oficial"
-          ? "Oficial (exclusiva)"
-          : "Doctrinal (inclusiva)"
-      ),
+      esc(vistaMinimos === "oficial" ? "Oficial (exclusiva)" : "Doctrinal (inclusiva)"),
     ].join(sep));
-    lines.push([
-      "Resumen",
-      "Días brutos totales",
-      esc(resultados._debug?.diasBrutosTotales ?? ""),
-    ].join(sep));
-    lines.push([
-      "Resumen",
-      "Base efectiva (días)",
-      esc(resultados._debug?.diasConAbonosTermino ?? ""),
-    ].join(sep));
+    lines.push(["Resumen","Días brutos totales",esc(resultados._debug?.diasBrutosTotales ?? "")].join(sep));
+    lines.push(["Resumen","Base efectiva (días)",esc(resultados._debug?.diasConAbonosTermino ?? "")].join(sep));
     lines.push([
       "Resumen",
       "Ajustes finos",
       esc(
         tmAjuste === 0 && cetAjuste === 0
           ? "—"
-          : `TM ${tmAjuste >= 0 ? "+" : ""}${tmAjuste}, CET ${
-              cetAjuste >= 0 ? "+" : ""
-            }${cetAjuste}`
+          : `TM ${tmAjuste >= 0 ? "+" : ""}${tmAjuste}, CET ${cetAjuste >= 0 ? "+" : ""}${cetAjuste}`
       ),
     ].join(sep));
+    const totalAbonosPorCausa = causas.reduce((s, c) => s + Math.max(0, c.abonoCausa || 0), 0);
     lines.push(["Resumen", "Abonos por causa", esc(totalAbonosPorCausa)].join(sep));
     lines.push(["Resumen", "Abono global", esc(totalAbonosGlobal)].join(sep));
     lines.push(["Resumen", "Abonos totales", esc(totalAbonosTodos)].join(sep));
-
     lines.push("");
-    lines.push(
-      ["Causas", "Causa", "Años", "Meses", "Días", "Abono por causa", "Régimen"].join(sep)
-    );
-    causasConRotulo.forEach((c, i) => {
-      const rot = c._rotulo || c.nombre || `Causa ${i + 1}`;
-      lines.push(
-        [
-          "Causas",
-          esc(rot),
-          c.anios,
-          c.meses,
-          c.dias,
-          c.abonoCausa,
-          c.regimen,
-        ].join(sep)
-      );
+    lines.push(["Causas", "ID/Nombre", "Años", "Meses", "Días", "Abono por causa", "Régimen"].join(sep));
+    causasOrdenadas.forEach((c, idx) => {
+      lines.push([
+        "Causas",
+        esc(c.nombre || c.id),
+        c.anios,
+        c.meses,
+        c.dias,
+        c.abonoCausa,
+        c.regimen,
+      ].join(sep));
     });
-
     const csv = lines.join("\r\n");
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
     const url = URL.createObjectURL(blob);
@@ -896,7 +845,7 @@ export default function CalculadoraCondenas() {
     e.target.value = "";
   };
 
-  /* Restablecer (no dispara modal) */
+  /* Restablecer */
   const restablecer = () => {
     try {
       sessionStorage.setItem("skipDisclaimerOnce", "1");
@@ -922,7 +871,7 @@ export default function CalculadoraCondenas() {
     setSugerenciaInfo(null);
   };
 
-  /* Avisos de coherencia */
+  /* Avisos */
   const warnings = (() => {
     const res: string[] = [];
     const ini = parseDMYtoUTC(inicio);
@@ -949,14 +898,13 @@ export default function CalculadoraCondenas() {
     return res;
   })();
 
-  /* Etiqueta principal */
   const badgeRegla = `UTC · Mínimos: ${
     vistaMinimos === "oficial"
       ? "Oficial (exclusiva)"
       : "Doctrinal (inclusiva)"
   } · Modo: Normativa · Ajuste fino TM/CET ±1 (opcional)`;
 
-  /* ====== Herramienta auxiliar: Abonar a Fecha (tipo Excel) ====== */
+  /* ====== Herramienta auxiliar: Abonar a Fecha ====== */
   const [abonarFechaTermino, setAbonarFechaTermino] = useState<string>("");
   const [abonarAnios, setAbonarAnios] = useState<number>(0);
   const [abonarMeses, setAbonarMeses] = useState<number>(0);
@@ -965,61 +913,21 @@ export default function CalculadoraCondenas() {
   const resultadoAbonarFecha = useMemo(() => {
     const ft = parseDMYtoUTC(abonarFechaTermino);
     if (!ft) return "";
-    // Resta Y/M con respeto a fin de mes y luego Días
-    const menosYM = addYearsMonthsUTC(ft, -Math.max(0, abonarAnios), -Math.max(0, abonarMeses));
+    const menosYM = addYearsMonthsUTC(
+      ft,
+      -Math.max(0, abonarAnios),
+      -Math.max(0, abonarMeses)
+    );
     const menosYMD = addDaysUTC(menosYM, -Math.max(0, abonarDias));
     return fmtDMY(menosYMD);
   }, [abonarFechaTermino, abonarAnios, abonarMeses, abonarDias]);
 
   /* =================== UI =================== */
   return (
-    <div className="calc-root" style={{ maxWidth: 1100, margin: "0 auto", padding: 16 }}>
-      <style>{`
-        /* Evita Times: fuerza fuente del sistema SOLO en este módulo */
-        .calc-root, .calc-root * {
-          font-family: system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol' !important;
-        }
-        @media print {
-          button, summary, details:not([open]) { display:none!important }
-          .print-block{ break-inside: avoid; }
-        }
-        /* Grid Causas responsive */
-        .causas-grid-head, .causas-grid-body {
-          display: grid;
-          grid-template-columns: 140px 80px 80px 80px 120px 150px 140px 40px; /* Causa + 7 cols */
-          gap: 8px;
-          align-items: center;
-        }
-        .causas-grid-head div {
-          font-size: 12px; color: #6b7280;
-        }
-        @media (max-width: 860px) {
-          .causas-grid-head, .causas-grid-body {
-            grid-template-columns: 1fr 1fr; /* En móvil se apila de forma legible */
-          }
-          .causa-chip {
-            grid-column: 1 / -1;
-            margin: 4px 0;
-            font-weight: 600;
-          }
-        }
-        .causa-chip{
-          display:inline-flex;
-          align-items:center;
-          padding:6px 10px;
-          border-radius:999px;
-          border:1px solid #e5e7eb;
-          background:#f9fafb;
-          font-size:12px;
-          color:#111827;
-          max-width:100%;
-          overflow:hidden;
-          text-overflow:ellipsis;
-          white-space:nowrap;
-        }
-      `}</style>
+    <div style={{ maxWidth: 1100, margin: "0 auto", padding: 16 }}>
+      <style>{`@media print{button,summary,details:not([open]){display:none!important} .print-block{break-inside:avoid;}}`}</style>
 
-      {/* Modal de advertencia (siempre al abrir) */}
+      {/* Modal de advertencia */}
       <DisclaimerModal />
 
       {/* CABECERA */}
@@ -1292,28 +1200,27 @@ export default function CalculadoraCondenas() {
           + Agregar causa
         </button>
 
-        {/* Encabezados */}
-        <div className="causas-grid-head" style={{ marginTop: 10 }}>
-          <div>Causa</div>
-          <div>Años</div>
-          <div>Meses</div>
-          <div>Días</div>
-          <div>Régimen</div>
-          <div>Abono por causa</div>
-          <div>Nombre (opcional)</div>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "80px 80px 80px 120px 150px 140px 40px",
+            gap: 8,
+            alignItems: "center",
+            marginTop: 10,
+          }}
+        >
+          <div style={{ fontSize: 12, color: "#6b7280" }}>Años</div>
+          <div style={{ fontSize: 12, color: "#6b7280" }}>Meses</div>
+          <div style={{ fontSize: 12, color: "#6b7280" }}>Días</div>
+          <div style={{ fontSize: 12, color: "#6b7280" }}>Régimen</div>
+          <div style={{ fontSize: 12, color: "#6b7280" }}>Abono por causa</div>
+          <div style={{ fontSize: 12, color: "#6b7280" }}>
+            Nombre (opcional)
+          </div>
           <div></div>
-        </div>
 
-        {/* Filas */}
-        <div className="causas-grid-body" style={{ marginTop: 6 }}>
-          {causasConRotulo.map((c, idx) => (
+          {causasOrdenadas.map((c, idx) => (
             <React.Fragment key={c.id}>
-              {/* Col 1: etiqueta compacta siempre visible */}
-              <div className="causa-chip" title={c._rotulo}>
-                {c._rotulo}
-              </div>
-
-              {/* Col 2: años */}
               <input
                 type="number"
                 value={c.anios}
@@ -1326,10 +1233,8 @@ export default function CalculadoraCondenas() {
                   borderRadius: 8,
                   border: "1px solid #d1d5db",
                 }}
-                aria-label={`Años de ${c._rotulo}`}
+                aria-label="Años de la causa"
               />
-
-              {/* Col 3: meses */}
               <input
                 type="number"
                 value={c.meses}
@@ -1342,10 +1247,8 @@ export default function CalculadoraCondenas() {
                   borderRadius: 8,
                   border: "1px solid #d1d5db",
                 }}
-                aria-label={`Meses de ${c._rotulo}`}
+                aria-label="Meses de la causa"
               />
-
-              {/* Col 4: días */}
               <input
                 type="number"
                 value={c.dias}
@@ -1358,10 +1261,8 @@ export default function CalculadoraCondenas() {
                   borderRadius: 8,
                   border: "1px solid #d1d5db",
                 }}
-                aria-label={`Días de ${c._rotulo}`}
+                aria-label="Días de la causa"
               />
-
-              {/* Col 5: régimen */}
               <div style={{ display: "flex", gap: 8 }}>
                 <label style={{ display: "flex", gap: 6, alignItems: "center" }}>
                   <input
@@ -1382,8 +1283,6 @@ export default function CalculadoraCondenas() {
                   2/3
                 </label>
               </div>
-
-              {/* Col 6: abono x causa */}
               <input
                 type="number"
                 value={c.abonoCausa}
@@ -1400,10 +1299,8 @@ export default function CalculadoraCondenas() {
                   borderRadius: 8,
                   border: "1px solid #d1d5db",
                 }}
-                aria-label={`Abono por causa de ${c._rotulo}`}
+                aria-label="Abono por causa"
               />
-
-              {/* Col 7: nombre opcional (para que pueda reemplazar “Causa N”) */}
               <input
                 value={c.nombre || ""}
                 onChange={(e) => handleChangeCausa(c.id, "nombre", e.target.value)}
@@ -1414,10 +1311,8 @@ export default function CalculadoraCondenas() {
                   borderRadius: 8,
                   border: "1px solid #d1d5db",
                 }}
-                aria-label={`Nombre opcional de ${c._rotulo}`}
+                aria-label="Nombre de la causa"
               />
-
-              {/* Col 8: eliminar */}
               <button
                 onClick={() => handleRemoveCausa(c.id)}
                 title="Eliminar causa"
@@ -1429,7 +1324,7 @@ export default function CalculadoraCondenas() {
                   background: "#fff",
                   cursor: "pointer",
                 }}
-                aria-label={`Eliminar ${c._rotulo}`}
+                aria-label="Eliminar causa"
               >
                 🗑️
               </button>
@@ -1552,7 +1447,7 @@ export default function CalculadoraCondenas() {
         </div>
       </div>
 
-      {/* Avisos suaves de consistencia */}
+      {/* Avisos */}
       {warnings.length ? (
         <div
           style={{
@@ -1571,102 +1466,82 @@ export default function CalculadoraCondenas() {
         </div>
       ) : null}
 
-      {/* === Ejemplo simplificado (paso a paso) — PLEGABLE === */}
+      {/* === Cómo se calculó este cómputo — PLEGABLE === */}
       <details
         style={{ marginTop: 12 }}
-        open={ejemploOpen}
-        onToggle={(e) => setEjemploOpen((e.target as HTMLDetailsElement).open)}
+        open={comoOpen}
+        onToggle={(e) => setComoOpen((e.target as HTMLDetailsElement).open)}
       >
         <summary style={{ cursor: "pointer", fontWeight: 600, fontSize: 15 }}>
-          Ejemplo simplificado (paso a paso)
+          Cómo se calculó este cómputo
         </summary>
+
         <div style={{ marginTop: 8, fontSize: 14, lineHeight: 1.55 }}>
-          {!inicio || causasConRotulo.length === 0 ? (
+          {!inicio || causasOrdenadas.length === 0 ? (
             <div style={{ fontSize: 12, color: "#6b7280" }}>
-              Ingresa <b>Inicio</b> y al menos <b>una causa</b> para ver la explicación dinámica.
+              Ingresa <b>Inicio</b> y al menos <b>una causa</b> para ver el detalle.
             </div>
           ) : (
-            <>
-              {(() => {
-                const N = chainActual?.totalBrutos ?? 0;
-                const X = totalAbonosPorCausa;
-                const M = chainActual?.totalConAbonos ?? 0;
-                const Y = totalAbonosGlobal;
-                const Z = Math.max(0, M - Y);
-                return (
-                  <>
-                    <ol style={{ marginLeft: 18 }}>
-                      <li>
-                        <b>Punto de Partida.</b> Inicio = <b>{inicio}</b>. Modo de Encadenado:{" "}
-                        <b>
-                          {encadenado === "dia_siguiente"
-                            ? "Oficial (día siguiente)"
-                            : "Doctrinal (mismo día)"}
-                        </b>
-                        . Vista de Mínimos:{" "}
-                        <b>{vistaMinimos === "oficial" ? "Oficial (exclusiva)" : "Doctrinal (inclusiva)"}</b>.
-                      </li>
-                      <li>
-                        <b>Suma Bruta de Causas.</b> Se encadenan respetando fin de mes y días inclusivos.{" "}
-                        {chip(`Total Bruto = ${N} días`)}.
-                      </li>
-                      <li>
-                        <b>Descuentos por Causa.</b> Se resta a cada tramo su abono específico.{" "}
-                        {chip(`Tras Abonos por Causa = ${M} días`)}
-                        <div style={{ marginTop: 4, fontSize: 12, color: "#4b5563" }}>
-                          Abonos por Causa (suma): <b>{X}</b> días.
-                        </div>
-                      </li>
-                      <li>
-                        <b>Abono Global del Expediente.</b> Se descuenta sobre el total anterior.{" "}
-                        {chip(`Abono Global = ${Y} días`)}.
-                      </li>
-                      <li>
-                        <b>Base Efectiva (días).</b> Define TO/TM/TMBI/CET.{" "}
-                        <span
-                          title="Base Efectiva = (Tras Abonos por Causa) − (Abono Global)"
-                          style={{ marginLeft: 4 }}
-                        >
-                          {chip(`Base Efectiva = (${M}) − (${Y}) = ${Z} días`)}
-                        </span>
-                      </li>
-                      <li>
-                        <b>Término Original (TO).</b> <i>Inicio + (Base Efectiva − 1)</i> →{" "}
-                        <b>{resultados.terminoOriginal || "—"}</b>.
-                      </li>
-                      <li>
-                        <b>Tiempo Mínimo (TM).</b> Se aplica el régimen <b>{regimenAplicado}</b>{" "}
-                        {regimenAplicado === "1/2" ? "(se cumple la mitad)" : "(se cumplen dos tercios)"}.{" "}
-                        La fecha respeta la vista de mínimos{" "}
-                        {vistaMinimos === "oficial"
-                          ? "(equivalente exclusiva; el día 1 corre desde el día siguiente)"
-                          : "(equivalente inclusiva; el día 1 corre desde el mismo día)"}.
-                        Resultado: <b>{resultados.tm || "—"}</b>{" "}
-                        {tmAjuste !== 0 ? chip(`ajuste visual ${tmAjuste > 0 ? "+" : ""}${tmAjuste}`) : null}
-                      </li>
-                      <li>
-                        <b>TMBI.</b> <i>TM − 12 meses</i> (respetando fin de mes) →{" "}
-                        <b>{resultados.tmbi || "—"}</b>.
-                      </li>
-                      <li>
-                        <b>TM CET.</b> <i>2/3 del tramo inclusivo</i> entre <b>Inicio</b> y <b>TMBI</b>. Vista{" "}
-                        {vistaMinimos === "oficial" ? "Oficial (se muestra 1 día antes)" : "Doctrinal (llegada inclusiva)"}{" "}
-                        → <b>{resultados.tmCet || "—"}</b>{" "}
-                        {cetAjuste !== 0 ? chip(`ajuste visual ${cetAjuste > 0 ? "+" : ""}${cetAjuste}`) : null}.
-                      </li>
-                    </ol>
-                    <div style={{ marginTop: 6, fontSize: 12, color: "#4b5563" }}>
-                      Nota: Los <i>ajustes finos</i> (±1 día) en TM/CET desplazan <b>solo la fecha mostrada</b>. No alteran la base.
-                    </div>
-                  </>
-                );
-              })()}
-            </>
+            (() => {
+              const N = chainActual?.totalBrutos ?? 0;
+              const X = totalAbonosPorCausa;
+              const M = chainActual?.totalConAbonos ?? 0;
+              const Y = totalAbonosGlobal;
+              const Z = Math.max(0, M - Y);
+              return (
+                <ul style={{ marginLeft: 18 }}>
+                  <li>
+                    <b>Punto de partida:</b> Inicio = <b>{inicio || "—"}</b>. Encadenado:{" "}
+                    <b>{encadenado === "dia_siguiente" ? "Oficial (día siguiente)" : "Doctrinal (mismo día)"}</b>. Vista de mínimos:{" "}
+                    <b>{vistaMinimos === "oficial" ? "Oficial (exclusiva)" : "Doctrinal (inclusiva)"}</b>.
+                  </li>
+                  <li>
+                    <b>Suma bruta de causas:</b> <b>{N || "—"}</b>.
+                  </li>
+                  <li>
+                    <b>Tras abonos por causa:</b> <b>{M || "—"}</b>.
+                  </li>
+                  <li>
+                    <b>Abono global del expediente:</b> <b>{Y}</b> días.
+                  </li>
+                  <li>
+                    <b>Base efectiva:</b> <b>{Z || "—"}</b>{" "}
+                    <span style={{ fontSize: 12, color: "#4b5563" }}>
+                      (Base efectiva = Tras abonos por causa − Abono global)
+                    </span>
+                  </li>
+                  <li>
+                    <b>Término Original (TO):</b> <b>{resultados.terminoOriginal || "—"}</b>{" "}
+                    <span style={{ fontSize: 12, color: "#4b5563" }}>
+                      (Inicio + Base efectiva − 1)
+                    </span>
+                  </li>
+                  <li>
+                    <b>TM ({regimenAplicado}):</b> <b>{resultados.tm || "—"}</b>{" "}
+                    <span style={{ fontSize: 12, color: "#4b5563" }}>
+                      {regimenAplicado === "1/2"
+                        ? "(sobre base efectiva: mitad)"
+                        : "(sobre base efectiva: dos tercios)"}
+                    </span>
+                  </li>
+                  <li>
+                    <b>TMBI:</b> <b>{resultados.tmbi || "—"}</b>{" "}
+                    <span style={{ fontSize: 12, color: "#4b5563" }}>(TM − 12 meses, fin de mes)</span>
+                  </li>
+                  <li>
+                    <b>TM CET:</b> <b>{resultados.tmCet || "—"}</b>{" "}
+                    <span style={{ fontSize: 12, color: "#4b5563" }}>
+                      (2/3 del tramo inclusivo Inicio→TMBI; {vistaMinimos === "oficial" ? "vista oficial (muestra 1 día antes)" : "vista doctrinal (llegada inclusiva)"})
+                    </span>
+                  </li>
+                </ul>
+              );
+            })()
           )}
         </div>
       </details>
 
-      {/* === Definiciones y conceptos — PLEGABLE === */}
+      {/* === Definiciones — PLEGABLE === */}
       <details
         id="definiciones"
         style={{ marginTop: 16 }}
@@ -1691,63 +1566,25 @@ export default function CalculadoraCondenas() {
                 <b>Oficial (día siguiente):</b> La siguiente causa comienza el día siguiente al término de la previa.
               </li>
               <li>
-                <b>Doctrinal (mismo día):</b> La siguiente causa inicia el mismo día del término de la previa (referencia comparativa).
+                <b>Doctrinal (mismo día):</b> La siguiente causa inicia el mismo día del término de la previa.
               </li>
             </ul>
           </p>
           <p>
             <b>Suma Bruta de Causas:</b> Total de duración de todas las causas encadenadas, antes de considerar abonos.
-            Respeta <i>fin de mes</i> al sumar años/meses y utiliza <i>días inclusivos</i>.
+            Respeta <i>fin de mes</i> y usa <i>días inclusivos</i>.
           </p>
           <p>
-            <b>Abonos por Causa:</b> Días descontados a la duración de una causa específica. Modifican el encadenado y el cómputo.
+            <b>Abonos por Causa:</b> Días descontados a la duración de una causa específica.
           </p>
           <p>
-            <b>Abono Global del Expediente:</b> Descuento total aplicado después de considerar los abonos por causa.
-            Reduce el <b>Término Original (TO)</b> y la <b>base de mínimos</b>.
+            <b>Abono Global del Expediente:</b> Descuento total aplicado después de los abonos por causa.
           </p>
           <p>
-            <b>Base Efectiva (días):</b> Total resultante tras aplicar abonos.
-            <br />
-            <span
-              style={{
-                display: "inline-block",
-                marginTop: 4,
-                padding: "4px 8px",
-                border: "1px solid #e5e7eb",
-                borderRadius: 8,
-                background: "#f9fafb",
-                fontSize: 13,
-              }}
-            >
-              Base Efectiva = <b>(Tras Abonos por Causa)</b> − <b>(Abono Global)</b>
-            </span>
+            <b>Base Efectiva (días):</b> <i>(Tras Abonos por Causa) − (Abono Global)</i>.
           </p>
           <p>
-            <b>Término Original (TO):</b> <i>Inicio + (Base Efectiva − 1)</i>. No se agrega “+1” extra al final.
-          </p>
-          <p>
-            <b>Tiempo Mínimo (TM):</b> Fecha en que se cumple el mínimo legal sobre la <b>base efectiva</b>, según régimen:
-            <ul>
-              <li>
-                <b>1/2:</b> Se cumple la mitad.
-              </li>
-              <li>
-                <b>2/3:</b> Se cumplen dos tercios.
-              </li>
-            </ul>
-            La <b>Vista de Mínimos</b> define si el día 1 corre desde el día siguiente (Oficial, exclusiva)
-            o desde el mismo día (Doctrinal, inclusiva).
-          </p>
-          <p>
-            <b>TMBI:</b> Fecha <i>TM − 12 meses</i>, respetando el fin de mes.
-          </p>
-          <p>
-            <b>TM CET:</b> <b>2/3 del tramo inclusivo</b> entre <b>Inicio</b> y <b>TMBI</b>.
-            Vista Oficial: se muestra 1 día antes; Vista Doctrinal: llegada inclusiva.
-          </p>
-          <p>
-            <b>Ajustes Finos (±1 día):</b> Desplazan solo la <b>fecha mostrada</b> de TM/CET. No cambian la base efectiva.
+            <b>TO, TM, TMBI, TM CET:</b> Fechas derivadas de la base efectiva según la normativa y la vista de mínimos.
           </p>
         </div>
       </details>
@@ -1771,8 +1608,7 @@ export default function CalculadoraCondenas() {
           }}
         >
           <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 8 }}>
-            Replica tu hoja Excel “Abonar a Fecha”: resta <b>Años/Meses/Días</b> a una fecha de término,
-            respetando fin de mes y con días inclusivos. No altera el cómputo base.
+            Resta <b>Años/Meses/Días</b> a una fecha de término, respetando fin de mes. No altera el cómputo base.
           </div>
 
           <div
@@ -1901,7 +1737,7 @@ export default function CalculadoraCondenas() {
             />
             <div style={{ fontSize: 12, color: "#4b5563" }}>
               Los abonos globales <b>mueven el TO</b> y ajustan la base de
-              mínimos (TM/TMBI/CET), conforme a la normativa.
+              mínimos (TM/TMBI/CET).
             </div>
           </div>
         </div>
@@ -1957,7 +1793,7 @@ export default function CalculadoraCondenas() {
             </div>
           </div>
 
-          {/* Botones de distribución */}
+          {/* Botones */}
           <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
             <button
               onClick={sugerirDistribucion}
@@ -1988,7 +1824,7 @@ export default function CalculadoraCondenas() {
             </button>
           </div>
 
-          {/* Mensaje de sugerencia */}
+          {/* Mensaje */}
           {sugerenciaInfo ? (
             <div
               style={{
@@ -2010,7 +1846,7 @@ export default function CalculadoraCondenas() {
             </div>
           ) : null}
 
-          {/* Tabla de sugeridos + previa */}
+          {/* Tabla sugeridos + previa */}
           {sugeridos ? (
             <div style={{ marginTop: 10 }}>
               <div style={{ fontWeight: 600, marginBottom: 6 }}>
@@ -2027,12 +1863,14 @@ export default function CalculadoraCondenas() {
                 <div style={{ fontSize: 12, color: "#6b7280" }}>Causa</div>
                 <div style={{ fontSize: 12, color: "#6b7280" }}>Actual</div>
                 <div style={{ fontSize: 12, color: "#6b7280" }}>Sugerido</div>
-                {causasConRotulo.map((c) => {
+                {causasOrdenadas.map((c, idx) => {
                   const sug =
-                    sugeridos.find((s) => s.id === c.id)?.nuevoAbono ?? c.abonoCausa;
+                    sugeridos.find((s) => s.id === c.id)?.nuevoAbono ??
+                    c.abonoCausa;
+                  const rotulo = causaLabel(c, idx);
                   return (
                     <React.Fragment key={c.id}>
-                      <div>{c._rotulo}</div>
+                      <div title={c.nombre || ""}>{rotulo}</div>
                       <div>{c.abonoCausa}</div>
                       <div>{sug}</div>
                     </React.Fragment>
@@ -2040,7 +1878,6 @@ export default function CalculadoraCondenas() {
                 })}
               </div>
 
-              {/* Previa de resultados con sugeridos */}
               {simulados ? (
                 <div
                   className="print-block"
@@ -2198,8 +2035,7 @@ export default function CalculadoraCondenas() {
               </div>
             </div>
             <div style={{ marginTop: 6, fontSize: 12, color: "#4b5563" }}>
-              Desplaza la <b>fecha mostrada</b> (no la base de cálculo) para
-              cuadrar expedientes con corrimientos mínimos.
+              Desplaza la <b>fecha mostrada</b> (no la base de cálculo).
             </div>
           </div>
 
@@ -2270,7 +2106,7 @@ export default function CalculadoraCondenas() {
           </div>
         </div>
 
-        {/* Módulo de distribución (clásico) visible dentro de avanzadas */}
+        {/* Módulo de distribución (clásico) */}
         <div
           style={{
             marginTop: 12,
@@ -2285,13 +2121,7 @@ export default function CalculadoraCondenas() {
           </div>
           <UIErrorBoundary>
             {React.createElement(AbonosDistribucion as any, {
-              // Pasamos nombres limpios: si no hay nombre, enviamos “Causa N”
-              causas: Array.isArray(causasConRotulo)
-                ? causasConRotulo.map((c, i) => ({
-                    ...c,
-                    nombre: (c.nombre && c.nombre.trim()) || c._rotulo || `Causa ${i + 1}`,
-                  }))
-                : [],
+              causas: Array.isArray(causasOrdenadas) ? causasOrdenadas : [],
               inicio,
               encadenado,
               onAbonoChange: (id: string, nuevoAbono: number) =>
@@ -2306,7 +2136,7 @@ export default function CalculadoraCondenas() {
           </UIErrorBoundary>
         </div>
 
-        {/* Respaldo (JSON/CSV) */}
+        {/* Respaldo */}
         <div
           style={{
             marginTop: 12,
@@ -2382,7 +2212,7 @@ export default function CalculadoraCondenas() {
         onCancel={closeConfirm}
       />
 
-      {/* Pie: versión y autor */}
+      {/* Pie */}
       <div
         style={{
           marginTop: 16,

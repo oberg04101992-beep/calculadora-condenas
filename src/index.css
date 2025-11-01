@@ -1,21 +1,45 @@
-/* Reset suave y tipografía */
-:root { --radius: 10px; }
-* { box-sizing: border-box; }
-html, body, #root { height: 100%; }
-body { margin: 0; font-family: system-ui, -apple-system, Segoe U..., Roboto, Arial, sans-serif; color: #111827; background: #fff; }
+/* ===== Tipografía base de sistema =====
+   Evita que aparezca "Times" en cualquier navegador
+   y unifica inputs/selects/textarea con el resto del texto. */
+:root {
+  --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, Inter, Helvetica, Arial,
+    "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", sans-serif;
+}
 
-/* Inputs y selects consistentes */
-input, select, button { font: inherit; }
+html, body, #root {
+  height: 100%;
+}
 
-/* details/summary accesibles */
-details { border: 1px solid #e5e7eb; border-radius: var(--radius); padding: 8px 10px; background: #fff; }
-details > summary { list-style: none; cursor: pointer; font-weight: 700; }
-details > summary::-webkit-details-marker { display: none; }
+html, body {
+  margin: 0;
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background: #f5f7fb;
+  color: #111827;
+}
 
-/* Botones genéricos */
-button { border-radius: var(--radius); }
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
 
-/* Pequeños espaciamientos utilitarios por si los necesitas */
-.mt-8 { margin-top: 8px; }
-.mt-12 { margin-top: 12px; }
-.mt-16 { margin-top: 16px; }
+/* Unifica controles de formulario con la misma tipografía */
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+/* Quita estilos nativos agresivos en botones para mantener la tipografía */
+button {
+  background: none;
+}
+
+/* Asegura tipografía en elementos que a veces “se rebelan” */
+code, kbd, samp, pre {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
+    "Courier New", monospace;
+}

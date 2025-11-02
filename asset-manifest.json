@@ -1,13 +1,13 @@
 {
   "files": {
     "main.css": "/calculadora-condenas/static/css/main.376faf85.css",
-    "main.js": "/calculadora-condenas/static/js/main.0ef2d9bb.js",
+    "main.js": "/calculadora-condenas/static/js/main.f5ef6f1c.js",
     "index.html": "/calculadora-condenas/index.html",
     "main.376faf85.css.map": "/calculadora-condenas/static/css/main.376faf85.css.map",
-    "main.0ef2d9bb.js.map": "/calculadora-condenas/static/js/main.0ef2d9bb.js.map"
+    "main.f5ef6f1c.js.map": "/calculadora-condenas/static/js/main.f5ef6f1c.js.map"
   },
   "entrypoints": [
     "static/css/main.376faf85.css",
-    "static/js/main.0ef2d9bb.js"
+    "static/js/main.f5ef6f1c.js"
   ]
 }

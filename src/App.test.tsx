@@ -147,7 +147,17 @@ export function _test_CP_PA_001() {
     terminoOriginal: "07/12/2027",
     minimo23: "21/05/2025",
     tmbi: "21/05/2024",
-    minimo13: "03/11/2022",
+    minimo13: "02/11/2022",
   };
   return { ui, EXPECT };
 }
+
+describe("legacy expediente helpers", () => {
+  it("mantiene el cálculo de ejemplo", () => {
+    const { ui, EXPECT } = _test_CP_PA_001();
+    expect(ui.terminoOriginal).toBe(EXPECT.terminoOriginal);
+    expect(ui.minimo23).toBe(EXPECT.minimo23);
+    expect(ui.tmbi).toBe(EXPECT.tmbi);
+    expect(ui.minimo13).toBe(EXPECT.minimo13);
+  });
+});

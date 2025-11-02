@@ -1,15 +1,11 @@
 // src/components/CausasList.tsx
 import React from 'react';
 import type { AppConfig } from '../store/config';
+import type { Causa } from '../types/causa';
 
-interface Causa {
-  id: string;
-  titulo: string;
-  // ... tus otros campos (años, meses, días, abonoPorCausa, etc.)
-}
 interface Props {
   causas: Causa[];
-  setCausas: (cs: Causa[]) => void;
+  setCausas: React.Dispatch<React.SetStateAction<Causa[]>>;
   config: AppConfig;
   onToggleOrdenAuto: (val: boolean) => void;
 }
@@ -18,11 +14,13 @@ export default function CausasList({ causas, setCausas, config, onToggleOrdenAut
   const move = (index: number, dir: -1 | 1) => {
     const j = index + dir;
     if (j < 0 || j >= causas.length) return;
-    const copy = causas.slice();
-    const tmp = copy[index];
-    copy[index] = copy[j];
-    copy[j] = tmp;
-    setCausas(copy);
+    setCausas(prev => {
+      const copy = prev.slice();
+      const tmp = copy[index];
+      copy[index] = copy[j];
+      copy[j] = tmp;
+      return copy;
+    });
   };
 
   return (

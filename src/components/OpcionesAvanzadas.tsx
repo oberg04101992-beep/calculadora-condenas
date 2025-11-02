@@ -9,7 +9,7 @@ interface Props {
 
 export default function OpcionesAvanzadas({ config, onChange }: Props) {
   return (
-    <details className="p-3 border rounded-md mb-3 bg-[#0f172a] text-white">
+    <details className="p-3 border rounded-md mb-3 bg-[#0f172a] text-white" open>
       <summary className="cursor-pointer font-semibold">Opciones avanzadas</summary>
 
       <div className="mt-3 grid gap-3">

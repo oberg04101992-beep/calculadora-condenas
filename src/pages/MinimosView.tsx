@@ -5,26 +5,24 @@ import OpcionesAvanzadas from '../components/OpcionesAvanzadas';
 import PanelCalculo from '../components/PanelCalculo';
 import ResultadosMinimos from '../components/ResultadosMinimos';
 import CausasList from '../components/CausasList';
+import AnalisisRapido from '../components/AnalisisRapido';
 import { defaultConfig } from '../store/config';
-
-// Helpers de tu app:
-import { fmt, addDaysUTC } from '../lib/fechas';
-
-type Causa = { id: string; titulo: string; diasInclusivos: number; };
+import type { Causa } from '../types/causa';
 
 export default function MinimosView() {
   const [config, setConfig] = useState(defaultConfig);
+
   const [causas, setCausas] = useState<Causa[]>([
     { id: 'c1', titulo: 'Causa 1: 7 años', diasInclusivos: 2557 },
     { id: 'c2', titulo: 'Causa 2: 7 años', diasInclusivos: 2558 },
   ]);
+
   const [inicio, setInicio] = useState<Date>(new Date(Date.UTC(2021, 5, 17))); // 17/06/2021
 
-  // Encadenado simplificado: suma de días inclusivos, ajusta si usas oficial/doctrinal
-  const diasBrutos = useMemo(() => {
-    // En tu app real, aquí ya recibes el encadenado correcto según el modo elegido
-    return causas.reduce((acc, c) => acc + c.diasInclusivos, 0);
-  }, [causas]);
+  const diasBrutos = useMemo(
+    () => causas.reduce((acc, c) => acc + c.diasInclusivos, 0),
+    [causas]
+  );
 
   const params = {
     inicio,
@@ -100,7 +98,10 @@ export default function MinimosView() {
       {/* Resultados */}
       <ResultadosMinimos result={result} config={config} />
 
-      {/* Panel cálculo */}
+      {/* Análisis rápido (semáforo) */}
+      <AnalisisRapido params={{ ...params, diasBrutos }} result={result} />
+
+      {/* Panel cálculo con Copiar */}
       <PanelCalculo params={{ ...params, diasBrutos }} result={result} />
     </div>
   );

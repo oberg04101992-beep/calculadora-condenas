@@ -3,7 +3,7 @@ import dayjs from 'dayjs';
 import utc from 'dayjs/plugin/utc';
 dayjs.extend(utc);
 
-// Crea fecha UTC segura desde DD/MM/AAAA
+// Crea fecha UTC segura desde DD/MM/AAAA (utilidad opcional)
 export function dDMY(s: string): Date {
   const [DD, MM, YYYY] = s.split('/').map(Number);
   return new Date(Date.UTC(YYYY, (MM - 1), DD));
@@ -33,7 +33,6 @@ export function addMonthsRespectingEOM(date: Date, months: number): Date {
   const d = date.getUTCDate();
   const target = dayjs.utc(Date.UTC(y, m, d)).add(months, 'month');
 
-  // Si el día no existe en el mes destino, dayjs lo ajusta al fin de mes automáticamente.
   return new Date(Date.UTC(
     target.year(),
     target.month(),

@@ -1,10 +1,10 @@
 // src/store/config.ts
 export interface AppConfig {
   regimen: '1/2' | '2/3';
-  vistaOficial: boolean; // true = "Oficial (exclusiva)"
-  abonoMinimosGlobal: number; // "Abonos que afectan mínimos (global)"
+  vistaOficial: boolean;
+  abonoMinimosGlobal: number;
   roundingMode: 'oficial' | 'pro_reo' | 'matematico';
-  ordenarAutomatico: boolean; // si false => orden manual con flechas
+  ordenarAutomatico: boolean;
 }
 
 export const defaultConfig: AppConfig = {

@@ -1,4 +1,5 @@
 // src/CalculadoraCondenas.tsx
+import PanelComoSeCalculoAuto from "./components/PanelComoSeCalculoAuto";
 import "./CalculadoraCondenas.css";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import AbonosDistribucion from "./components/AbonosDistribucion";

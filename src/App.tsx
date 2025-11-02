@@ -1,8 +1,7 @@
+// src/App.tsx
 import React from "react";
 import CalculadoraCondenas from "./CalculadoraCondenas";
 
-function App() {
+export default function App() {
   return <CalculadoraCondenas />;
 }
-
-export default App;

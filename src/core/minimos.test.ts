@@ -75,6 +75,25 @@ describe("calcularMinimos", () => {
     expect(resultado.cetFechaVista).toBe("06/02/2020");
   });
 
+  it("mantiene el término original con abonos globales aunque no muevan mínimos", () => {
+    const resultado = calcularMinimos({
+      ...baseInput,
+      abonoGlobal: 100,
+      abonoMinimosGlobal: false,
+    });
+
+    expect(resultado.valido).toBe(true);
+    expect(resultado.baseEfectiva).toBe(732);
+    expect(resultado.abonoGlobalIngresado).toBe(100);
+    expect(resultado.abonoGlobalAplicado).toBe(0);
+    expect(resultado.terminoOriginal).toBe("23/09/2021");
+
+    expect(resultado.tmFraccionDias).toBe(488);
+    expect(resultado.tmDiasAplicados).toBe(488);
+    expect(resultado.tmFechaInclusiva).toBe("02/05/2021");
+    expect(resultado.tmFechaVista).toBe("03/05/2021");
+  });
+
   it("calcula regimen 1/2 simple sin abonos", () => {
     const resultado = calcularMinimos({
       inicio: "15/07/2021",

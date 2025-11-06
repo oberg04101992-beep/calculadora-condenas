@@ -234,24 +234,30 @@ export function calcularMinimos(
   const abonoGlobalAplicado = input.abonoMinimosGlobal
     ? abonoGlobalIngresado
     : 0;
-  const baseEfectiva = Math.max(
+  const totalTrasAbonosCausa = chain.totalConAbonos || 0;
+  const baseEfectivaMinimos = Math.max(
     0,
-    (chain.totalConAbonos || 0) - abonoGlobalAplicado
+    totalTrasAbonosCausa - abonoGlobalAplicado
+  );
+  const baseEfectivaTermino = Math.max(
+    0,
+    totalTrasAbonosCausa - abonoGlobalIngresado
   );
 
   const ratioTM = input.regimen === "1/2"
     ? { numerador: 1, denominador: 2, etiqueta: "1/2" }
     : { numerador: 2, denominador: 3, etiqueta: "2/3" };
 
-  const tmFraccionDias = baseEfectiva * (ratioTM.numerador / ratioTM.denominador);
+  const tmFraccionDias =
+    baseEfectivaMinimos * (ratioTM.numerador / ratioTM.denominador);
   const tmDiasAplicados =
-    baseEfectiva > 0
+    baseEfectivaMinimos > 0
       ? Math.max(0, roundWithMode(tmFraccionDias, input.roundingMode))
       : 0;
 
   const terminoOriginal =
-    baseEfectiva > 0
-      ? fmtDMY(addDaysUTC(inicioDate, baseEfectiva - 1))
+    baseEfectivaTermino > 0
+      ? fmtDMY(addDaysUTC(inicioDate, baseEfectivaTermino - 1))
       : "";
 
   const tmFechaInclusivaDate =
@@ -301,16 +307,16 @@ export function calcularMinimos(
   const cetFechaInclusiva = fmtDMY(cetFechaInclusivaDate);
   const cetFechaVista = fmtDMY(cetFechaVistaDate);
 
-  const valido = baseEfectiva > 0 && !!tmFechaVistaDate;
+  const valido = baseEfectivaMinimos > 0 && !!tmFechaVistaDate;
 
   return {
     valido,
     totalDiasBrutos: chain.totalBrutos,
-    totalTrasAbonosCausa: chain.totalConAbonos,
+    totalTrasAbonosCausa: totalTrasAbonosCausa,
     totalAbonosCausa,
     abonoGlobalIngresado,
     abonoGlobalAplicado,
-    baseEfectiva,
+    baseEfectiva: baseEfectivaMinimos,
     terminoOriginal,
     tmFraccionDias,
     tmDiasAplicados,

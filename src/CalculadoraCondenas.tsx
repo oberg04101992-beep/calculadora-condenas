@@ -1,9 +1,24 @@
 // src/CalculadoraCondenas.tsx
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import AbonosDistribucion from "./components/AbonosDistribucion";
 import DisclaimerModal from "./components/DisclaimerModal";
 import FeedbackSlideOver from "./components/FeedbackSlideOver";
 import ConfirmDialog from "./components/ConfirmDialog";
+import {
+  EncadenadoMode,
+  Regimen,
+  RoundingMode,
+  addDaysUTC,
+  addYearsMonthsUTC,
+  calcularMinimos,
+  diffDaysInclusiveUTC,
+  encadenarExpediente,
+  fmtDMY,
+  finDeCausa,
+  parseDMYtoUTC,
+  roundWithMode,
+  CausaCalculo,
+} from "./core/minimos";
 
 /** Contenedor de errores para aislar fallos del módulo de distribución */
 class UIErrorBoundary extends React.Component<
@@ -44,14 +59,8 @@ const GAS_URL =
   "https://script.google.com/macros/s/AKfycbzBGBDwxIQghdRUf9ssxw_sA2vagbwuyr-j2E8Fqx5cNtWpRKFAFVNl4F5CuLp89sRN/exec";
 
 /* ===== Tipos ===== */
-type Regimen = "1/2" | "2/3";
-type EncadenadoMode = "dia_siguiente" | "mismo_dia";
-type Causa = {
+type Causa = CausaCalculo & {
   id: string;
-  anios: number;
-  meses: number;
-  dias: number;
-  abonoCausa: number;
   regimen: Regimen;
   nombre?: string;
 };
@@ -68,104 +77,6 @@ type Resultados = {
 
 /* ===== Constantes ===== */
 const STORAGE_KEY = "calc_state_v6";
-const DAY = 24 * 60 * 60 * 1000;
-
-/* ===== Utilidades de fecha (UTC) ===== */
-function fmtDMY(d?: Date | null) {
-  if (!d) return "";
-  const dd = String(d.getUTCDate()).padStart(2, "0");
-  const mm = String(d.getUTCMonth() + 1).padStart(2, "0");
-  const yy = d.getUTCFullYear();
-  return `${dd}/${mm}/${yy}`;
-}
-function parseDMYtoUTC(s?: string | null): Date | null {
-  if (!s) return null;
-  const m = s.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
-  if (!m) return null;
-  const d = Number(m[1]);
-  const mo = Number(m[2]) - 1;
-  const y = Number(m[3]);
-  const dt = new Date(Date.UTC(y, mo, d, 0, 0, 0));
-  return isNaN(dt.getTime()) ? null : dt;
-}
-const addDaysUTC = (d: Date, n: number) => new Date(d.getTime() + n * DAY);
-
-/** Suma/resta años/meses respetando fin de mes (normativa) */
-function addYearsMonthsUTC(d: Date, years: number, months: number): Date {
-  const y = d.getUTCFullYear();
-  const m = d.getUTCMonth();
-  const base = new Date(Date.UTC(y + years, m + months, 1));
-  const lastDay = new Date(
-    Date.UTC(base.getUTCFullYear(), base.getUTCMonth() + 1, 0)
-  ).getUTCDate();
-  const useDay = Math.min(d.getUTCDate(), lastDay);
-  return new Date(
-    Date.UTC(base.getUTCFullYear(), base.getUTCMonth(), useDay, 0, 0, 0)
-  );
-}
-
-/** Días inclusivos [a → b] */
-function diffDaysInclusiveUTC(a: Date, b: Date): number {
-  const A = Date.UTC(a.getUTCFullYear(), a.getUTCMonth(), a.getUTCDate());
-  const B = Date.UTC(b.getUTCFullYear(), b.getUTCMonth(), b.getUTCDate());
-  return Math.floor((B - A) / DAY) + 1;
-}
-
-/* ===== Encadenado de causas (TO oficial) ===== */
-function finDeCausa(d: Date, anios: number, meses: number, dias: number) {
-  const base = addYearsMonthsUTC(d, anios || 0, meses || 0);
-  return dias && dias > 0 ? addDaysUTC(base, dias - 1) : base;
-}
-function encadenarExpediente(
-  causas: Causa[],
-  inicioDMY: string,
-  encadenado: EncadenadoMode
-) {
-  const ini = parseDMYtoUTC(inicioDMY)!;
-  let startBruto = ini;
-  let startAbono = ini;
-
-  let finConAbonos = ini;
-  let finBruto = ini;
-
-  let totalBrutos = 0;
-  let totalConAbonos = 0;
-
-  for (const c of causas) {
-    // tramo bruto
-    const endBruto = finDeCausa(
-      startBruto,
-      c.anios || 0,
-      c.meses || 0,
-      c.dias || 0
-    );
-    const durBruto = diffDaysInclusiveUTC(startBruto, endBruto);
-
-    // tramo con abonos por causa (no aplica global aquí)
-    const ab = Math.max(0, c.abonoCausa || 0);
-    const durConAbonos = Math.max(0, durBruto - ab);
-    const endConAbonos =
-      durConAbonos > 0
-        ? addDaysUTC(startAbono, durConAbonos - 1)
-        : addDaysUTC(startAbono, -1);
-
-    totalBrutos += durBruto;
-    totalConAbonos += durConAbonos;
-
-    // siguiente inicio
-    if (encadenado === "dia_siguiente") {
-      startBruto = addDaysUTC(endBruto, 1);
-      startAbono = addDaysUTC(endConAbonos, 1);
-    } else {
-      startBruto = endBruto;
-      startAbono = endConAbonos;
-    }
-
-    finBruto = endBruto;
-    finConAbonos = endConAbonos;
-  }
-  return { finConAbonos, finBruto, totalBrutos, totalConAbonos };
-}
 
 /* ===== UI helpers ===== */
 const chip = (text: string) => (
@@ -206,6 +117,8 @@ export default function CalculadoraCondenas() {
 
   /* Opciones avanzadas */
   const [abonosTotalesExpediente, setAbonosTotalesExpediente] = useState(0);
+  const [abonoMinimosGlobal, setAbonoMinimosGlobal] = useState(true);
+  const [roundingMode, setRoundingMode] = useState<RoundingMode>("residual");
 
   // Ingresos manuales (operativa): TM y TMBI (opcionales)
   const [tmIngresado, setTmIngresado] = useState<string>("");
@@ -239,14 +152,41 @@ export default function CalculadoraCondenas() {
     closeConfirm();
   };
 
+  /* Toast accesible */
+  const [toast, setToast] = useState<{ message: string } | null>(null);
+  const toastTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const showToast = (message: string) => {
+    setToast({ message });
+    if (toastTimeout.current) clearTimeout(toastTimeout.current);
+    toastTimeout.current = setTimeout(() => setToast(null), 2500);
+  };
+  useEffect(() => {
+    return () => {
+      if (toastTimeout.current) clearTimeout(toastTimeout.current);
+    };
+  }, []);
+
   /* Recuerdo de plegado */
-  const [ejemploOpen, setEjemploOpen] = React.useState<boolean>(() => {
-    try {
-      return localStorage.getItem("ejemploOpen") === "1";
-    } catch {
-      return false;
+  const [manualCalculoOpen, setManualCalculoOpen] = React.useState<boolean>(
+    () => {
+      try {
+        const nuevo = localStorage.getItem("manualCalculoOpen");
+        if (nuevo === "1" || nuevo === "0") return nuevo === "1";
+        return localStorage.getItem("ejemploOpen") === "1";
+      } catch {
+        return false;
+      }
     }
-  });
+  );
+  const [detalleCalculoOpen, setDetalleCalculoOpen] = React.useState<boolean>(
+    () => {
+      try {
+        return localStorage.getItem("detalleCalculoOpen") === "1";
+      } catch {
+        return false;
+      }
+    }
+  );
   const [definicionesOpen, setDefinicionesOpen] = React.useState<boolean>(() => {
     try {
       return localStorage.getItem("definicionesOpen") === "1";
@@ -263,9 +203,17 @@ export default function CalculadoraCondenas() {
   });
   useEffect(() => {
     try {
-      localStorage.setItem("ejemploOpen", ejemploOpen ? "1" : "0");
+      localStorage.setItem("manualCalculoOpen", manualCalculoOpen ? "1" : "0");
     } catch {}
-  }, [ejemploOpen]);
+  }, [manualCalculoOpen]);
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        "detalleCalculoOpen",
+        detalleCalculoOpen ? "1" : "0"
+      );
+    } catch {}
+  }, [detalleCalculoOpen]);
   useEffect(() => {
     try {
       localStorage.setItem("definicionesOpen", definicionesOpen ? "1" : "0");
@@ -292,6 +240,12 @@ export default function CalculadoraCondenas() {
         setOrdenarGravosaPrimero(s.ordenarGravosaPrimero);
       if (typeof s?.abonosTotalesExpediente === "number")
         setAbonosTotalesExpediente(s.abonosTotalesExpediente);
+      if (typeof s?.abonoMinimosGlobal === "boolean")
+        setAbonoMinimosGlobal(s.abonoMinimosGlobal);
+      if (typeof s?.roundingMode === "string") {
+        const valid: RoundingMode[] = ["residual", "truncado", "matematico"];
+        if (valid.includes(s.roundingMode)) setRoundingMode(s.roundingMode);
+      }
       if (typeof s?.tmIngresado === "string") setTmIngresado(s.tmIngresado);
       if (typeof s?.tmbiIngresado === "string")
         setTmbiIngresado(s.tmbiIngresado);
@@ -313,6 +267,8 @@ export default function CalculadoraCondenas() {
       causas,
       ordenarGravosaPrimero,
       abonosTotalesExpediente,
+      abonoMinimosGlobal,
+      roundingMode,
       tmIngresado,
       tmbiIngresado,
       toObjetivo,
@@ -330,6 +286,8 @@ export default function CalculadoraCondenas() {
     causas,
     ordenarGravosaPrimero,
     abonosTotalesExpediente,
+    abonoMinimosGlobal,
+    roundingMode,
     tmIngresado,
     tmbiIngresado,
     toObjetivo,
@@ -348,6 +306,16 @@ export default function CalculadoraCondenas() {
     return regimenGlobal;
   }, [regimenGlobal]);
 
+  const duracionCausaRealDias = useCallback(
+    (c: Causa) => {
+      const ini = parseDMYtoUTC(inicio);
+      if (!ini) return 0;
+      const fin = finDeCausa(ini, c.anios || 0, c.meses || 0, c.dias || 0);
+      return diffDaysInclusiveUTC(ini, fin);
+    },
+    [inicio]
+  );
+
   /* Orden visual de causas */
   const causasOrdenadas = useMemo(() => {
     const withLen = causas.map((c) => ({
@@ -356,7 +324,16 @@ export default function CalculadoraCondenas() {
     }));
     if (!ordenarGravosaPrimero) return withLen;
     return [...withLen].sort((a, b) => b.len - a.len);
-  }, [causas, ordenarGravosaPrimero]);
+  }, [causas, ordenarGravosaPrimero, duracionCausaRealDias]);
+
+  const causasCalculo = useMemo<CausaCalculo[]>(() => {
+    return causasOrdenadas.map((c) => ({
+      anios: Math.max(0, Number(c.anios) || 0),
+      meses: Math.max(0, Number(c.meses) || 0),
+      dias: Math.max(0, Number(c.dias) || 0),
+      abonoCausa: Math.max(0, Number(c.abonoCausa) || 0),
+    }));
+  }, [causasOrdenadas]);
 
   /* Auto-slash en fechas */
   const autoSlash = (raw: string) => {
@@ -373,41 +350,70 @@ export default function CalculadoraCondenas() {
 
   /* Cálculo del encadenado bruto y con abonos por causa */
   const chainActual = useMemo(() => {
-    const ini = parseDMYtoUTC(inicio);
-    if (!ini || causasOrdenadas.length === 0)
+    if (!inicio || causasCalculo.length === 0)
       return null as null | ReturnType<typeof encadenarExpediente>;
-    return encadenarExpediente(causasOrdenadas, inicio, encadenado);
-  }, [inicio, causasOrdenadas, encadenado]);
+    return encadenarExpediente(causasCalculo, inicio, encadenado);
+  }, [inicio, causasCalculo, encadenado]);
 
   /* ===== Base normativa estricta =====
      Base efectiva = (suma causas con abonos por causa) − abono global  */
+  const abonoGlobalAplicado = useMemo(
+    () => (abonoMinimosGlobal ? Math.max(0, abonosTotalesExpediente || 0) : 0),
+    [abonoMinimosGlobal, abonosTotalesExpediente]
+  );
+
   const baseEfectivaDias = useMemo(() => {
     if (!chainActual) return 0;
-    return Math.max(
-      0,
-      (chainActual.totalConAbonos || 0) - (abonosTotalesExpediente || 0)
-    );
-  }, [chainActual, abonosTotalesExpediente]);
+    return Math.max(0, (chainActual.totalConAbonos || 0) - abonoGlobalAplicado);
+  }, [chainActual, abonoGlobalAplicado]);
+
+  const calculoPasoAPaso = useMemo(
+    () =>
+      calcularMinimos({
+        inicio,
+        causas: causasCalculo,
+        encadenado,
+        regimen: regimenAplicado,
+        vista: vistaMinimos,
+        abonoGlobal: abonosTotalesExpediente,
+        abonoMinimosGlobal,
+        roundingMode,
+      }),
+    [
+      inicio,
+      causasCalculo,
+      encadenado,
+      regimenAplicado,
+      vistaMinimos,
+      abonosTotalesExpediente,
+      abonoMinimosGlobal,
+      roundingMode,
+    ]
+  );
 
   /* TO normativo: Inicio + (Base efectiva − 1) */
-  const toNormativo = useMemo(() => {
-    const ini = parseDMYtoUTC(inicio);
-    if (!ini || baseEfectivaDias <= 0) return "";
-    return fmtDMY(addDaysUTC(ini, baseEfectivaDias - 1));
-  }, [inicio, baseEfectivaDias]);
+  const toNormativo = calculoPasoAPaso.terminoOriginal || "";
+
+  const tmDatos = useMemo(() => {
+    const ratio = regimenAplicado === "1/2" ? 1 / 2 : 2 / 3;
+    const fraccion = baseEfectivaDias * ratio;
+    const dias =
+      baseEfectivaDias > 0
+        ? Math.max(0, roundWithMode(fraccion, roundingMode))
+        : 0;
+    return { ratio, fraccion, dias };
+  }, [baseEfectivaDias, regimenAplicado, roundingMode]);
 
   /* TM/TMBI/CET automáticos (con override manual opcional en TM/TMBI) */
   const tmAuto = useMemo(() => {
     const ini = parseDMYtoUTC(inicio);
-    if (!ini || baseEfectivaDias <= 0) return "";
-    const ratio = regimenAplicado === "1/2" ? 1 / 2 : 2 / 3;
-    const diasTM = Math.ceil(baseEfectivaDias * ratio);
+    if (!ini || baseEfectivaDias <= 0 || tmDatos.dias <= 0) return "";
 
     // Vista Oficial: equivalente exclusiva (día 1 = día siguiente)
     const startForTM = vistaMinimos === "oficial" ? addDaysUTC(ini, 1) : ini;
-    const llegada = addDaysUTC(startForTM, Math.max(0, diasTM - 1));
+    const llegada = addDaysUTC(startForTM, Math.max(0, tmDatos.dias - 1));
     return fmtDMY(llegada);
-  }, [inicio, baseEfectivaDias, regimenAplicado, vistaMinimos]);
+  }, [inicio, baseEfectivaDias, vistaMinimos, tmDatos.dias]);
 
   const tmMostrado = useMemo(
     () => (tmIngresado ? tmIngresado : tmAuto),
@@ -456,11 +462,376 @@ export default function CalculadoraCondenas() {
   const metricas = useMemo(() => {
     const ini = parseDMYtoUTC(inicio);
     const tmbi = parseDMYtoUTC(tmbiMostrado);
-    if (!ini || !tmbi) return null as null | { L: number; diasCET: number };
+    if (!ini || !tmbi)
+      return null as null | { L: number; cetFraccion: number; diasCET: number };
     const L = Math.max(1, diffDaysInclusiveUTC(ini, tmbi));
-    const diasCET = Math.ceil(L * (2 / 3));
-    return { L, diasCET };
-  }, [inicio, tmbiMostrado]);
+    const cetFraccion = L * (2 / 3);
+    const diasCET = Math.max(0, roundWithMode(cetFraccion, roundingMode));
+    return { L, cetFraccion, diasCET };
+  }, [inicio, tmbiMostrado, roundingMode]);
+
+  const roundingModeLabels: Record<RoundingMode, string> = useMemo(
+    () => ({
+      residual: "Residual (oficial, aproxima hacia arriba)",
+      truncado: "Truncado (solo enteros hacia abajo)",
+      matematico: "Matemático (≥0,5 sube)",
+    }),
+    []
+  );
+
+  /* Totales de abonos */
+  const totalAbonosPorCausa = useMemo(
+    () => causas.reduce((s, c) => s + Math.max(0, c.abonoCausa || 0), 0),
+    [causas]
+  );
+  const totalAbonosGlobal = useMemo(
+    () => Math.max(0, abonosTotalesExpediente || 0),
+    [abonosTotalesExpediente]
+  );
+  const totalAbonosTodos = totalAbonosPorCausa + totalAbonosGlobal;
+
+  const formatDecimal = useCallback((n: number) => {
+    if (!Number.isFinite(n)) return "—";
+    const fixed = n.toFixed(2);
+    return fixed.replace(/\.00$/, "").replace(/(\.\d*?)0+$/, "$1");
+  }, []);
+
+  const manualCalculoInfo = useMemo(() => {
+    if (!inicio || causasCalculo.length === 0) {
+      return {
+        listo: false,
+        mensaje:
+          "Ingresa Inicio y al menos una causa para ver el cálculo paso a paso.",
+        pasos: [] as React.ReactNode[],
+        copy: "Sin cálculo disponible.",
+        data: null as null | Record<string, unknown>,
+      };
+    }
+
+    const encLabel =
+      encadenado === "dia_siguiente"
+        ? "Oficial (día siguiente)"
+        : "Doctrinal (mismo día)";
+    const vistaLabel =
+      vistaMinimos === "oficial"
+        ? "Oficial (exclusiva)"
+        : "Doctrinal (inclusiva)";
+    const ordenLabel = ordenarGravosaPrimero
+      ? "automático (más gravosa primero)"
+      : "manual (según ingreso)";
+
+    const ratioNum = regimenAplicado === "1/2" ? 1 : 2;
+    const ratioDen = regimenAplicado === "1/2" ? 2 : 3;
+    const ratioLabel = `${ratioNum}/${ratioDen}`;
+
+    const totalBrutos = calculoPasoAPaso.totalDiasBrutos;
+    const totalTrasCausa = calculoPasoAPaso.totalTrasAbonosCausa;
+    const base = baseEfectivaDias;
+    const tmFraccion = tmDatos.fraccion;
+    const tmDiasAplicados = tmDatos.dias;
+    const tmAutoInclusivo = calculoPasoAPaso.tmFechaInclusiva || "—";
+    const tmAutoVista = calculoPasoAPaso.tmFechaVista || "—";
+    const tmVistaActual = tmDisplay || "—";
+    const tmbiAuto = calculoPasoAPaso.tmbi || "—";
+    const tmbiActual = tmbiMostrado || "—";
+    const diasInicioATmbi = metricas?.L ?? calculoPasoAPaso.diasInicioATmbi;
+    const cetFraccion =
+      metricas?.cetFraccion ?? calculoPasoAPaso.cetFraccionDias;
+    const cetDiasAplicados =
+      metricas?.diasCET ?? calculoPasoAPaso.cetDiasAplicados;
+    const cetAutoVista = calculoPasoAPaso.cetFechaVista || "—";
+    const cetVistaActual = cetDisplay || "—";
+    const cetInclusivoAuto = calculoPasoAPaso.cetFechaInclusiva || "—";
+
+    const abonoGlobalTexto = abonoMinimosGlobal
+      ? `${abonoGlobalAplicado} días aplicados a mínimos`
+      : `${totalAbonosGlobal} días (referencia, sin mover mínimos)`;
+
+    const manualOverrides: string[] = [];
+    if (tmIngresado) manualOverrides.push(`TM manual: ${tmIngresado}`);
+    if (tmbiIngresado) manualOverrides.push(`TMBI manual: ${tmbiIngresado}`);
+    if (tmAjuste !== 0)
+      manualOverrides.push(`Ajuste TM ${tmAjuste > 0 ? "+" : ""}${tmAjuste}`);
+    if (cetAjuste !== 0)
+      manualOverrides.push(`Ajuste CET ${cetAjuste > 0 ? "+" : ""}${cetAjuste}`);
+
+    if (base <= 0 || tmDiasAplicados <= 0) {
+      return {
+        listo: false,
+        mensaje:
+          "Base efectiva sin días disponibles. Revisa abonos globales o por causa.",
+        pasos: [] as React.ReactNode[],
+        copy: "Base efectiva sin días disponibles.",
+        data: null,
+      };
+    }
+
+    const pasos: React.ReactNode[] = [
+      (
+        <li key="config" style={{ marginBottom: 8 }}>
+          <strong>1) Configuración base.</strong> Inicio = <b>{inicio}</b>. Encadenado:
+          <b> {encLabel}</b>. Vista de mínimos: <b>{vistaLabel}</b>. Redondeo:
+          <b> {roundingModeLabels[roundingMode]}</b>. Orden de causas:
+          <b> {ordenLabel}</b>. Abono global: <b>{abonoGlobalTexto}</b>.
+        </li>
+      ),
+      (
+        <li key="base" style={{ marginBottom: 8 }}>
+          <strong>2) Suma de días.</strong> Brutos encadenados =
+          <b> {totalBrutos}</b> días. Abonos por causa =
+          <b> {totalAbonosPorCausa}</b> → Tras abonos por causa =
+          <b> {totalTrasCausa}</b> días. Base efectiva =
+          <b> {base}</b> días.
+        </li>
+      ),
+      (
+        <li key="tm" style={{ marginBottom: 8 }}>
+          <strong>3) TM.</strong> TMd = <b>{base}</b> × <b>{ratioLabel}</b> =
+          <b> {formatDecimal(tmFraccion)}</b> → <b>{tmDiasAplicados} días</b> ({
+            roundingModeLabels[roundingMode]
+          }). TM inclusivo (auto): <b>{tmAutoInclusivo}</b>. Vista {vistaLabel}:
+          <b> {tmAutoVista}</b>. TM mostrado: <b>{tmVistaActual}</b>.
+        </li>
+      ),
+      (
+        <li key="tmbi" style={{ marginBottom: 8 }}>
+          <strong>4) TMBI.</strong> Auto = <b>{tmbiAuto}</b>. Mostrado =
+          <b> {tmbiActual}</b>. Días Inicio→TMBI =
+          <b> {diasInicioATmbi}</b> días.
+        </li>
+      ),
+      (
+        <li key="cet" style={{ marginBottom: 8 }}>
+          <strong>5) TM CET.</strong> CETd = <b>{diasInicioATmbi}</b> × <b>2/3</b>
+          = <b>{formatDecimal(cetFraccion)}</b> → <b>{cetDiasAplicados} días</b> ({
+            roundingModeLabels[roundingMode]
+          }). CET inclusivo (auto): <b>{cetInclusivoAuto}</b>. Vista {vistaLabel}:
+          <b> {cetAutoVista}</b>. CET mostrado: <b>{cetVistaActual}</b>.
+        </li>
+      ),
+    ];
+
+    if (manualOverrides.length) {
+      pasos.push(
+        <li key="overrides" style={{ marginBottom: 8 }}>
+          <strong>6) Ajustes manuales.</strong> {manualOverrides.join(" · ")}
+        </li>
+      );
+    }
+
+    const copyLines = [
+      "¿Cómo se calculó?",
+      `Inicio=${inicio}. Encadenado=${encLabel}. Vista=${vistaLabel}. Redondeo=${roundingModeLabels[roundingMode]}. Orden=${ordenLabel}.`,
+      `Brutos=${totalBrutos} días. Abonos por causa=${totalAbonosPorCausa}. Tras abonos por causa=${totalTrasCausa}. Base efectiva=${base}.`,
+      `Abono global=${abonoGlobalTexto}.`,
+      `TMd=${base}×${ratioLabel}=${formatDecimal(tmFraccion)} → ${tmDiasAplicados} días (${roundingModeLabels[roundingMode]}). TM inclusivo auto=${tmAutoInclusivo}. Vista ${vistaLabel} auto=${tmAutoVista}. TM mostrado=${tmVistaActual}.`,
+      `TMBI auto=${tmbiAuto}. TMBI mostrado=${tmbiActual}. Días Inicio→TMBI=${diasInicioATmbi}.`,
+      `CETd=${diasInicioATmbi}×2/3=${formatDecimal(cetFraccion)} → ${cetDiasAplicados} días (${roundingModeLabels[roundingMode]}). CET inclusivo auto=${cetInclusivoAuto}. Vista ${vistaLabel} auto=${cetAutoVista}. CET mostrado=${cetVistaActual}.`,
+    ];
+    if (manualOverrides.length) {
+      copyLines.push(`Ajustes/manuales: ${manualOverrides.join(" · ")}.`);
+    }
+
+    return {
+      listo: true,
+      mensaje: "",
+      pasos,
+      copy: copyLines.join("\n"),
+      data: {
+        encLabel,
+        vistaLabel,
+        ordenLabel,
+        roundingLabel: roundingModeLabels[roundingMode],
+        totalBrutos,
+        totalTrasCausa,
+        base,
+        abonoGlobalTexto,
+        abonoMinimosGlobal,
+        abonoGlobalAplicado,
+        totalAbonosPorCausa,
+        totalAbonosGlobal,
+        tmFraccion,
+        tmDiasAplicados,
+        ratioLabel,
+        tmAutoInclusivo,
+        tmAutoVista,
+        tmVistaActual,
+        diasInicioATmbi,
+        tmbiAuto,
+        tmbiActual,
+        cetFraccion,
+        cetDiasAplicados,
+        cetAutoVista,
+        cetVistaActual,
+        cetInclusivoAuto,
+        manualOverrides,
+      },
+    };
+  }, [
+    inicio,
+    causasCalculo,
+    encadenado,
+    vistaMinimos,
+    ordenarGravosaPrimero,
+    calculoPasoAPaso,
+    baseEfectivaDias,
+    tmDatos,
+    tmDisplay,
+    cetDisplay,
+    roundingMode,
+    roundingModeLabels,
+    totalAbonosPorCausa,
+    totalAbonosGlobal,
+    abonoGlobalAplicado,
+    abonoMinimosGlobal,
+    tmIngresado,
+    tmbiIngresado,
+    tmAjuste,
+    cetAjuste,
+    tmbiMostrado,
+    metricas,
+    regimenAplicado,
+    formatDecimal,
+  ]);
+
+  const detalleCalculoInfo = useMemo(() => {
+    if (!manualCalculoInfo.listo || !manualCalculoInfo.data) {
+      return {
+        listo: false,
+        bloques: [] as {
+          titulo: string;
+          filas: { etiqueta: string; valor: string }[];
+        }[],
+        copy: "Sin detalle disponible.",
+      };
+    }
+
+    const data = manualCalculoInfo.data as Record<string, any>;
+
+    const bloques = [
+      {
+        titulo: "Base del expediente",
+        filas: [
+          { etiqueta: "Inicio", valor: inicio || "—" },
+          { etiqueta: "Encadenado", valor: data.encLabel as string },
+          { etiqueta: "Vista de mínimos", valor: data.vistaLabel as string },
+          { etiqueta: "Redondeo", valor: data.roundingLabel as string },
+          { etiqueta: "Orden de causas", valor: data.ordenLabel as string },
+          {
+            etiqueta: "Total días brutos",
+            valor: String(data.totalBrutos ?? "—"),
+          },
+          {
+            etiqueta: "Abonos por causa",
+            valor: String(data.totalAbonosPorCausa ?? "—"),
+          },
+          {
+            etiqueta: "Tras abonos por causa",
+            valor: String(data.totalTrasCausa ?? "—"),
+          },
+          {
+            etiqueta: "Abono global",
+            valor: data.abonoGlobalTexto as string,
+          },
+          { etiqueta: "Base efectiva", valor: String(data.base ?? "—") },
+        ],
+      },
+      {
+        titulo: "Tiempo mínimo (TM)",
+        filas: [
+          {
+            etiqueta: "TMd (fracción)",
+            valor: `${data.base} × ${data.ratioLabel} = ${formatDecimal(
+              data.tmFraccion as number
+            )}`,
+          },
+          {
+            etiqueta: "TM días aplicados",
+            valor: String(data.tmDiasAplicados ?? "—"),
+          },
+          {
+            etiqueta: "TM inclusivo (auto)",
+            valor: data.tmAutoInclusivo as string,
+          },
+          {
+            etiqueta: "TM vista (auto)",
+            valor: data.tmAutoVista as string,
+          },
+          {
+            etiqueta: "TM mostrado",
+            valor: data.tmVistaActual as string,
+          },
+        ],
+      },
+      {
+        titulo: "TMBI",
+        filas: [
+          { etiqueta: "TMBI auto", valor: data.tmbiAuto as string },
+          { etiqueta: "TMBI mostrado", valor: data.tmbiActual as string },
+          {
+            etiqueta: "Días Inicio→TMBI",
+            valor: String(data.diasInicioATmbi ?? "—"),
+          },
+        ],
+      },
+      {
+        titulo: "TM CET",
+        filas: [
+          {
+            etiqueta: "CETd (fracción)",
+            valor: `${data.diasInicioATmbi} × 2/3 = ${formatDecimal(
+              data.cetFraccion as number
+            )}`,
+          },
+          {
+            etiqueta: "CET días aplicados",
+            valor: String(data.cetDiasAplicados ?? "—"),
+          },
+          {
+            etiqueta: "CET inclusivo (auto)",
+            valor: data.cetInclusivoAuto as string,
+          },
+          {
+            etiqueta: "CET vista (auto)",
+            valor: data.cetAutoVista as string,
+          },
+          {
+            etiqueta: "CET mostrado",
+            valor: data.cetVistaActual as string,
+          },
+        ],
+      },
+    ];
+
+    if ((data.manualOverrides as string[])?.length) {
+      bloques.push({
+        titulo: "Ajustes manuales",
+        filas: (
+          data.manualOverrides as string[]
+        ).map((texto, idx) => ({ etiqueta: `(${idx + 1})`, valor: texto })),
+      });
+    }
+
+    const detalleLines = [
+      "Detalle del cómputo:",
+      `Inicio=${inicio}. Encadenado=${data.encLabel}. Vista=${data.vistaLabel}. Redondeo=${data.roundingLabel}. Orden=${data.ordenLabel}.`,
+      `Total brutos=${data.totalBrutos}. Tras abonos por causa=${data.totalTrasCausa}. Base efectiva=${data.base}.`,
+      `TMd=${data.base}×${data.ratioLabel}=${formatDecimal(data.tmFraccion as number)} → ${data.tmDiasAplicados} días. TM inclusivo=${data.tmAutoInclusivo}. TM vista=${data.tmAutoVista}. TM mostrado=${data.tmVistaActual}.`,
+      `TMBI auto=${data.tmbiAuto}. TMBI mostrado=${data.tmbiActual}. Días Inicio→TMBI=${data.diasInicioATmbi}.`,
+      `CETd=${data.diasInicioATmbi}×2/3=${formatDecimal(data.cetFraccion as number)} → ${data.cetDiasAplicados} días. CET inclusivo=${data.cetInclusivoAuto}. CET vista=${data.cetAutoVista}. CET mostrado=${data.cetVistaActual}.`,
+    ];
+    if ((data.manualOverrides as string[])?.length) {
+      detalleLines.push(
+        `Ajustes manuales: ${(data.manualOverrides as string[]).join(" · ")}.`
+      );
+    }
+
+    return {
+      listo: true,
+      bloques,
+      copy: detalleLines.join("\n"),
+    };
+  }, [manualCalculoInfo, inicio, formatDecimal]);
 
   /* Resultados para tarjetas */
   const resultados = useMemo<Resultados>(() => {
@@ -469,18 +840,24 @@ export default function CalculadoraCondenas() {
       tm: tmDisplay || "",
       tmbi: tmbiMostrado || "",
       tmCet: cetDisplay || "",
-      _debug: chainActual
+      _debug: calculoPasoAPaso.valido
+        ? {
+            diasBrutosTotales: calculoPasoAPaso.totalDiasBrutos,
+            diasConAbonosTermino: baseEfectivaDias,
+          }
+        : chainActual
         ? {
             diasBrutosTotales: chainActual.totalBrutos,
             diasConAbonosTermino: baseEfectivaDias,
           }
         : undefined,
-    };
+  };
   }, [
     toNormativo,
     tmDisplay,
     tmbiMostrado,
     cetDisplay,
+    calculoPasoAPaso,
     chainActual,
     baseEfectivaDias,
   ]);
@@ -504,24 +881,19 @@ export default function CalculadoraCondenas() {
     );
   };
   const handleRemoveCausa = (id: string) => openConfirm(id);
-
-  function duracionCausaRealDias(c: Causa) {
-    const ini = parseDMYtoUTC(inicio);
-    if (!ini) return 0;
-    const fin = finDeCausa(ini, c.anios || 0, c.meses || 0, c.dias || 0);
-    return diffDaysInclusiveUTC(ini, fin);
-  }
-
-  /* Totales de abonos */
-  const totalAbonosPorCausa = useMemo(
-    () => causas.reduce((s, c) => s + Math.max(0, c.abonoCausa || 0), 0),
-    [causas]
-  );
-  const totalAbonosGlobal = useMemo(
-    () => Math.max(0, abonosTotalesExpediente || 0),
-    [abonosTotalesExpediente]
-  );
-  const totalAbonosTodos = totalAbonosPorCausa + totalAbonosGlobal;
+  const moveCausa = (id: string, delta: -1 | 1) => {
+    if (ordenarGravosaPrimero) return;
+    setCausas((prev) => {
+      const index = prev.findIndex((c) => c.id === id);
+      if (index === -1) return prev;
+      const target = index + delta;
+      if (target < 0 || target >= prev.length) return prev;
+      const next = [...prev];
+      const [item] = next.splice(index, 1);
+      next.splice(target, 0, item);
+      return next;
+    });
+  };
 
   /* Sugerencia simple a TO objetivo (opcional) */
   const [simulados, setSimulados] = useState<Resultados | null>(null);
@@ -627,13 +999,6 @@ export default function CalculadoraCondenas() {
       const up = updates.find((u) => u.id === c.id);
       return up ? { ...c, abonoCausa: up.nuevoAbono } : c;
     });
-    const chain = encadenarExpediente(causasTemp, inicio, encadenado);
-    const D_eff = Math.max(
-      0,
-      (chain.totalConAbonos || 0) - (abonosTotalesExpediente || 0)
-    );
-    const toPrev = D_eff > 0 ? fmtDMY(addDaysUTC(ini, D_eff - 1)) : "";
-
     const tmbi = parseDMYtoUTC(tmbiMostrado);
     const cet = (() => {
       if (!ini || !tmbi) return "";
@@ -644,6 +1009,26 @@ export default function CalculadoraCondenas() {
         vistaMinimos === "oficial" ? addDaysUTC(fechaCET, -1) : fechaCET;
       return fmtDMY(mostrar);
     })();
+
+    const chain = encadenarExpediente(causasTemp, inicio, encadenado);
+    if (!chain) {
+      return {
+        terminoOriginal: "",
+        tm: tmDisplay || "",
+        tmbi: tmbiMostrado || "",
+        tmCet: cet,
+        _debug: {
+          diasBrutosTotales: 0,
+          diasConAbonosTermino: 0,
+        },
+      };
+    }
+
+    const D_eff = Math.max(
+      0,
+      (chain.totalConAbonos || 0) - (abonosTotalesExpediente || 0)
+    );
+    const toPrev = D_eff > 0 ? fmtDMY(addDaysUTC(ini, D_eff - 1)) : "";
 
     return {
       terminoOriginal: toPrev,
@@ -671,6 +1056,28 @@ export default function CalculadoraCondenas() {
       tipo: "ok",
       mensaje: "Distribución aplicada a las causas.",
     });
+  };
+
+  const copiarTexto = async (texto: string, mensaje: string) => {
+    try {
+      await navigator.clipboard.writeText(texto);
+      showToast(mensaje);
+    } catch {
+      try {
+        const ta = document.createElement("textarea");
+        ta.value = texto;
+        ta.style.position = "fixed";
+        ta.style.left = "-9999px";
+        document.body.appendChild(ta);
+        ta.focus();
+        ta.select();
+        document.execCommand("copy");
+        document.body.removeChild(ta);
+        showToast(mensaje);
+      } catch {
+        showToast("No se pudo copiar el texto.");
+      }
+    }
   };
 
   /* Copiar resumen */
@@ -708,19 +1115,10 @@ export default function CalculadoraCondenas() {
       `Encadenado: ${encStr}\n` +
       `Vista de mínimos: ${minStr}\n` +
       `Ajustes finos aplicados: ${ajustesStr}\n` +
-      `Abonos: por causa ${totalAbonosPorCausa} · global ${totalAbonosGlobal} · total ${totalAbonosTodos}\n`;
-    try {
-      await navigator.clipboard.writeText(texto);
-      alert("Resumen copiado al portapapeles.");
-    } catch {
-      const ta = document.createElement("textarea");
-      ta.value = texto;
-      document.body.appendChild(ta);
-      ta.select();
-      document.execCommand("copy");
-      document.body.removeChild(ta);
-      alert("Resumen copiado.");
-    }
+      `Abonos: por causa ${totalAbonosPorCausa} · global ${totalAbonosGlobal} · total ${totalAbonosTodos}\n` +
+      `Criterio de redondeo: ${roundingModeLabels[roundingMode]}\n` +
+      `Abonos globales aplican a mínimos: ${abonoMinimosGlobal ? "Sí" : "No"}\n`;
+    return copiarTexto(texto, "Resumen copiado al portapapeles.");
   };
 
   /* Exportar CSV (Excel, separador ;) */
@@ -788,6 +1186,16 @@ export default function CalculadoraCondenas() {
     lines.push(["Resumen", "Abonos por causa", esc(totalAbonosPorCausa)].join(sep));
     lines.push(["Resumen", "Abono global", esc(totalAbonosGlobal)].join(sep));
     lines.push(["Resumen", "Abonos totales", esc(totalAbonosTodos)].join(sep));
+    lines.push([
+      "Resumen",
+      "Criterio de redondeo",
+      esc(roundingModeLabels[roundingMode]),
+    ].join(sep));
+    lines.push([
+      "Resumen",
+      "Abonos globales aplican mínimos",
+      esc(abonoMinimosGlobal ? "Sí" : "No"),
+    ].join(sep));
 
     lines.push("");
     lines.push(
@@ -925,7 +1333,11 @@ export default function CalculadoraCondenas() {
     if (cetD && tmbiD && cetD.getTime() > tmbiD.getTime()) {
       res.push("TM CET calculado supera el TMBI.");
     }
-    if (chainActual && chainActual.totalConAbonos - totalAbonosGlobal < 0) {
+    if (
+      chainActual &&
+      abonoMinimosGlobal &&
+      chainActual.totalConAbonos - abonoGlobalAplicado < 0
+    ) {
       res.push("La Base Efectiva quedó negativa (revisa abonos globales).");
     }
     return res;
@@ -1217,6 +1629,11 @@ export default function CalculadoraCondenas() {
           />
           Ordenar automáticamente (más gravosa primero)
         </label>
+        {!ordenarGravosaPrimero ? (
+          <div style={{ fontSize: 12, color: "#6b7280", marginTop: 4 }}>
+            Usa las flechas de cada fila para ajustar el orden manual.
+          </div>
+        ) : null}
         <button
           onClick={handleAgregarCausa}
           style={{
@@ -1234,7 +1651,8 @@ export default function CalculadoraCondenas() {
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "80px 80px 80px 120px 150px 140px 40px",
+            gridTemplateColumns:
+              "80px 80px 80px 120px 150px 140px 120px",
             gap: 8,
             alignItems: "center",
             marginTop: 10,
@@ -1250,7 +1668,7 @@ export default function CalculadoraCondenas() {
           </div>
           <div></div>
 
-          {causasOrdenadas.map((c) => (
+          {causasOrdenadas.map((c, idx) => (
             <React.Fragment key={c.id}>
               <input
                 type="number"
@@ -1344,21 +1762,65 @@ export default function CalculadoraCondenas() {
                 }}
                 aria-label="Nombre de la causa"
               />
-              <button
-                onClick={() => handleRemoveCausa(c.id)}
-                title="Eliminar causa"
-                style={{
-                  width: 36,
-                  height: 36,
-                  borderRadius: 8,
-                  border: "1px solid #d1d5db",
-                  background: "#fff",
-                  cursor: "pointer",
-                }}
-                aria-label="Eliminar causa"
-              >
-                🗑️
-              </button>
+              <div style={{ display: "flex", gap: 4 }}>
+                {!ordenarGravosaPrimero ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => moveCausa(c.id, -1)}
+                      disabled={idx === 0}
+                      title="Mover causa hacia arriba"
+                      style={{
+                        width: 36,
+                        height: 36,
+                        borderRadius: 8,
+                        border: "1px solid #d1d5db",
+                        background: "#fff",
+                        cursor: idx === 0 ? "not-allowed" : "pointer",
+                      }}
+                      aria-label="Mover causa hacia arriba"
+                    >
+                      ↑
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => moveCausa(c.id, 1)}
+                      disabled={idx === causasOrdenadas.length - 1}
+                      title="Mover causa hacia abajo"
+                      style={{
+                        width: 36,
+                        height: 36,
+                        borderRadius: 8,
+                        border: "1px solid #d1d5db",
+                        background: "#fff",
+                        cursor:
+                          idx === causasOrdenadas.length - 1
+                            ? "not-allowed"
+                            : "pointer",
+                      }}
+                      aria-label="Mover causa hacia abajo"
+                    >
+                      ↓
+                    </button>
+                  </>
+                ) : null}
+                <button
+                  type="button"
+                  onClick={() => handleRemoveCausa(c.id)}
+                  title="Eliminar causa"
+                  style={{
+                    width: 36,
+                    height: 36,
+                    borderRadius: 8,
+                    border: "1px solid #d1d5db",
+                    background: "#fff",
+                    cursor: "pointer",
+                  }}
+                  aria-label="Eliminar causa"
+                >
+                  🗑️
+                </button>
+              </div>
             </React.Fragment>
           ))}
         </div>
@@ -1497,97 +1959,151 @@ export default function CalculadoraCondenas() {
         </div>
       ) : null}
 
-      {/* === Ejemplo simplificado (paso a paso) — PLEGABLE === */}
+      {/* === ¿Cómo se calculó? — PLEGABLE === */}
       <details
+        id="manual-calculo"
         style={{ marginTop: 12 }}
-        open={ejemploOpen}
-        onToggle={(e) => setEjemploOpen((e.target as HTMLDetailsElement).open)}
+        open={manualCalculoOpen}
+        onToggle={(e) =>
+          setManualCalculoOpen((e.target as HTMLDetailsElement).open)
+        }
+        aria-labelledby="manual-calculo-summary"
       >
-        <summary style={{ cursor: "pointer", fontWeight: 600, fontSize: 15 }}>
-          Ejemplo simplificado (paso a paso)
+        <summary
+          id="manual-calculo-summary"
+          style={{ cursor: "pointer", fontWeight: 600, fontSize: 15 }}
+          aria-controls="manual-calculo-content"
+          aria-expanded={manualCalculoOpen}
+        >
+          ¿Cómo se calculó?
         </summary>
-        <div style={{ marginTop: 8, fontSize: 14, lineHeight: 1.55 }}>
-          {!inicio || causasOrdenadas.length === 0 ? (
-            <div style={{ fontSize: 12, color: "#6b7280" }}>
-              Ingresa <b>Inicio</b> y al menos <b>una causa</b> para ver la explicación dinámica.
-            </div>
-          ) : (
+        <div
+          id="manual-calculo-content"
+          style={{ marginTop: 8, fontSize: 14, lineHeight: 1.6 }}
+        >
+          {manualCalculoInfo.listo ? (
             <>
-              {(() => {
-                const N = chainActual?.totalBrutos ?? 0;
-                const X = totalAbonosPorCausa;
-                const M = chainActual?.totalConAbonos ?? 0;
-                const Y = totalAbonosGlobal;
-                const Z = Math.max(0, M - Y);
-                return (
-                  <>
-                    <ol style={{ marginLeft: 18 }}>
-                      <li>
-                        <b>Punto de Partida.</b> Inicio = <b>{inicio}</b>. Modo de Encadenado:{" "}
-                        <b>
-                          {encadenado === "dia_siguiente"
-                            ? "Oficial (día siguiente)"
-                            : "Doctrinal (mismo día)"}
-                        </b>
-                        . Vista de Mínimos:{" "}
-                        <b>{vistaMinimos === "oficial" ? "Oficial (exclusiva)" : "Doctrinal (inclusiva)"}</b>.
-                      </li>
-                      <li>
-                        <b>Suma Bruta de Causas.</b> Se encadenan respetando fin de mes y días inclusivos.{" "}
-                        {chip(`Total Bruto = ${N} días`)}.
-                      </li>
-                      <li>
-                        <b>Descuentos por Causa.</b> Se resta a cada tramo su abono específico.{" "}
-                        {chip(`Tras Abonos por Causa = ${M} días`)}
-                        <div style={{ marginTop: 4, fontSize: 12, color: "#4b5563" }}>
-                          Abonos por Causa (suma): <b>{X}</b> días.
-                        </div>
-                      </li>
-                      <li>
-                        <b>Abono Global del Expediente.</b> Se descuenta sobre el total anterior.{" "}
-                        {chip(`Abono Global = ${Y} días`)}.
-                      </li>
-                      <li>
-                        <b>Base Efectiva (días).</b> Define TO/TM/TMBI/CET.{" "}
-                        <span
-                          title="Base Efectiva = (Tras Abonos por Causa) − (Abono Global)"
-                          style={{ marginLeft: 4 }}
-                        >
-                          {chip(`Base Efectiva = (${M}) − (${Y}) = ${Z} días`)}
-                        </span>
-                      </li>
-                      <li>
-                        <b>Término Original (TO).</b> <i>Inicio + (Base Efectiva − 1)</i> →{" "}
-                        <b>{resultados.terminoOriginal || "—"}</b>.
-                      </li>
-                      <li>
-                        <b>Tiempo Mínimo (TM).</b> Se aplica el régimen <b>{regimenAplicado}</b>{" "}
-                        {regimenAplicado === "1/2" ? "(se cumple la mitad)" : "(se cumplen dos tercios)"}.{" "}
-                        La fecha respeta la vista de mínimos{" "}
-                        {vistaMinimos === "oficial"
-                          ? "(equivalente exclusiva; el día 1 corre desde el día siguiente)"
-                          : "(equivalente inclusiva; el día 1 corre desde el mismo día)"}.
-                        Resultado: <b>{resultados.tm || "—"}</b>{" "}
-                        {tmAjuste !== 0 ? chip(`ajuste visual ${tmAjuste > 0 ? "+" : ""}${tmAjuste}`) : null}
-                      </li>
-                      <li>
-                        <b>TMBI.</b> <i>TM − 12 meses</i> (respetando fin de mes) →{" "}
-                        <b>{resultados.tmbi || "—"}</b>.
-                      </li>
-                      <li>
-                        <b>TM CET.</b> <i>2/3 del tramo inclusivo</i> entre <b>Inicio</b> y <b>TMBI</b>. Vista{" "}
-                        {vistaMinimos === "oficial" ? "Oficial (se muestra 1 día antes)" : "Doctrinal (llegada inclusiva)"}{" "}
-                        → <b>{resultados.tmCet || "—"}</b>{" "}
-                        {cetAjuste !== 0 ? chip(`ajuste visual ${cetAjuste > 0 ? "+" : ""}${cetAjuste}`) : null}.
-                      </li>
-                    </ol>
-                    <div style={{ marginTop: 6, fontSize: 12, color: "#4b5563" }}>
-                      Nota: Los <i>ajustes finos</i> (±1 día) en TM/CET desplazan <b>solo la fecha mostrada</b>. No alteran la base.
-                    </div>
-                  </>
-                );
-              })()}
+              <button
+                onClick={() =>
+                  copiarTexto(
+                    manualCalculoInfo.copy,
+                    "Cálculo escrito copiado."
+                  )
+                }
+                style={{
+                  marginBottom: 12,
+                  padding: "6px 12px",
+                  borderRadius: 10,
+                  border: "1px solid #0ea5e9",
+                  background: "#0ea5e9",
+                  color: "#fff",
+                  cursor: "pointer",
+                }}
+              >
+                Copiar cálculo escrito
+              </button>
+              <ol style={{ marginLeft: 18, paddingLeft: 4 }}>
+                {manualCalculoInfo.pasos.map((paso, idx) => (
+                  <React.Fragment key={idx}>{paso}</React.Fragment>
+                ))}
+              </ol>
             </>
+          ) : (
+            <div style={{ fontSize: 12, color: "#6b7280" }}>
+              {manualCalculoInfo.mensaje}
+            </div>
+          )}
+        </div>
+      </details>
+
+      {/* === Detalle del cómputo — PLEGABLE === */}
+      <details
+        id="detalle-calculo"
+        style={{ marginTop: 12 }}
+        open={detalleCalculoOpen}
+        onToggle={(e) =>
+          setDetalleCalculoOpen((e.target as HTMLDetailsElement).open)
+        }
+        aria-labelledby="detalle-calculo-summary"
+      >
+        <summary
+          id="detalle-calculo-summary"
+          style={{ cursor: "pointer", fontWeight: 600, fontSize: 15 }}
+          aria-controls="detalle-calculo-content"
+          aria-expanded={detalleCalculoOpen}
+        >
+          Detalle del cómputo
+        </summary>
+        <div
+          id="detalle-calculo-content"
+          style={{ marginTop: 8, fontSize: 13.5, lineHeight: 1.6 }}
+        >
+          {detalleCalculoInfo.listo ? (
+            <>
+              <button
+                onClick={() =>
+                  copiarTexto(
+                    detalleCalculoInfo.copy,
+                    "Detalle copiado al portapapeles."
+                  )
+                }
+                style={{
+                  marginBottom: 12,
+                  padding: "6px 12px",
+                  borderRadius: 10,
+                  border: "1px solid #111827",
+                  background: "#111827",
+                  color: "#fff",
+                  cursor: "pointer",
+                }}
+              >
+                Copiar cálculo escrito
+              </button>
+              <div style={{ display: "grid", gap: 12 }}>
+                {detalleCalculoInfo.bloques.map((bloque, idx) => (
+                  <div
+                    key={idx}
+                    style={{
+                      border: "1px solid #e5e7eb",
+                      borderRadius: 10,
+                      padding: 12,
+                      background: "#fff",
+                    }}
+                  >
+                    <div
+                      style={{
+                        fontWeight: 600,
+                        marginBottom: 6,
+                        fontSize: 14,
+                      }}
+                    >
+                      {bloque.titulo}
+                    </div>
+                    <dl
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "minmax(160px, 1fr) 2fr",
+                        gap: 6,
+                        margin: 0,
+                      }}
+                    >
+                      {bloque.filas.map((fila, j) => (
+                        <React.Fragment key={j}>
+                          <dt style={{ fontWeight: 500, color: "#4b5563" }}>
+                            {fila.etiqueta}
+                          </dt>
+                          <dd style={{ margin: 0 }}>{fila.valor}</dd>
+                        </React.Fragment>
+                      ))}
+                    </dl>
+                  </div>
+                ))}
+              </div>
+            </>
+          ) : (
+            <div style={{ fontSize: 12, color: "#6b7280" }}>
+              {detalleCalculoInfo.copy}
+            </div>
           )}
         </div>
       </details>
@@ -1807,9 +2323,25 @@ export default function CalculadoraCondenas() {
           }}
         >
           <div style={{ fontWeight: 700, marginBottom: 6 }}>
-            Abonos totales del expediente (global)
+            Abonos que afectan mínimos (global)
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 8 }}>
+            <label
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                fontSize: 12,
+                color: "#374151",
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={abonoMinimosGlobal}
+                onChange={(e) => setAbonoMinimosGlobal(e.target.checked)}
+              />
+              Aplicar estos abonos al cálculo de TM/TMBI/CET (residual oficial)
+            </label>
             <input
               type="number"
               value={abonosTotalesExpediente}
@@ -1825,9 +2357,38 @@ export default function CalculadoraCondenas() {
               }}
               aria-label="Abonos globales del expediente"
             />
+            <label
+              style={{
+                display: "grid",
+                gap: 4,
+                fontSize: 12,
+                color: "#374151",
+              }}
+            >
+              Criterio de redondeo (mínimos)
+              <select
+                value={roundingMode}
+                onChange={(e) =>
+                  setRoundingMode(e.target.value as RoundingMode)
+                }
+                style={{
+                  width: "100%",
+                  padding: 10,
+                  borderRadius: 10,
+                  border: "1px solid #d1d5db",
+                  background: "#fff",
+                  cursor: "pointer",
+                }}
+              >
+                <option value="residual">Residual (oficial)</option>
+                <option value="truncado">Truncado (solo enteros)</option>
+                <option value="matematico">Matemático (≥0,5 sube)</option>
+              </select>
+            </label>
             <div style={{ fontSize: 12, color: "#4b5563" }}>
-              Los abonos globales <b>mueven el TO</b> y ajustan la base de
-              mínimos (TM/TMBI/CET), conforme a la normativa.
+              Los abonos globales pueden <b>mover el TO</b> y la base de
+              mínimos. Si desactivas la casilla, el valor se guarda como
+              referencia, pero no se resta a TM/TMBI/CET.
             </div>
           </div>
         </div>
@@ -2317,6 +2878,45 @@ export default function CalculadoraCondenas() {
 
       {/* Botón flotante: Comentarios */}
       <FeedbackSlideOver gasUrl={GAS_URL} />
+
+      <div
+        aria-live="polite"
+        aria-atomic="true"
+        style={{
+          position: "fixed",
+          bottom: 16,
+          right: 16,
+          maxWidth: 320,
+          pointerEvents: "none",
+          zIndex: 1000,
+        }}
+      >
+        {toast ? (
+          <div
+            role="status"
+            style={{
+              background: "#111827",
+              color: "#fff",
+              padding: "10px 14px",
+              borderRadius: 12,
+              boxShadow: "0 10px 25px rgba(0,0,0,0.25)",
+              fontSize: 13,
+            }}
+          >
+            {toast.message}
+          </div>
+        ) : (
+          <span
+            style={{
+              position: "absolute",
+              width: 1,
+              height: 1,
+              overflow: "hidden",
+              clip: "rect(1px, 1px, 1px, 1px)",
+            }}
+          ></span>
+        )}
+      </div>
     </div>
   );
 }

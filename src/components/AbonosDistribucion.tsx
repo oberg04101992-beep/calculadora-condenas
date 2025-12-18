@@ -1,8 +1,6 @@
 // src/components/AbonosDistribucion.tsx
 import React from "react";
-
-type Regimen = "1/2" | "2/3";
-type EncadenadoMode = "dia_siguiente" | "mismo_dia";
+import { EncadenadoMode, Regimen } from "../core/minimos";
 
 export type Causa = {
   id: string;

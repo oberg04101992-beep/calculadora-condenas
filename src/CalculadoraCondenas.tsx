@@ -1,5 +1,11 @@
 // src/CalculadoraCondenas.tsx
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import AbonosDistribucion from "./components/AbonosDistribucion";
 import DisclaimerModal from "./components/DisclaimerModal";
 import FeedbackSlideOver from "./components/FeedbackSlideOver";
@@ -348,6 +354,16 @@ export default function CalculadoraCondenas() {
     return regimenGlobal;
   }, [regimenGlobal]);
 
+  const duracionCausaRealDias = useCallback(
+    (c: Causa) => {
+      const ini = parseDMYtoUTC(inicio);
+      if (!ini) return 0;
+      const fin = finDeCausa(ini, c.anios || 0, c.meses || 0, c.dias || 0);
+      return diffDaysInclusiveUTC(ini, fin);
+    },
+    [inicio]
+  );
+
   /* Orden visual de causas */
   const causasOrdenadas = useMemo(() => {
     const withLen = causas.map((c) => ({
@@ -356,7 +372,7 @@ export default function CalculadoraCondenas() {
     }));
     if (!ordenarGravosaPrimero) return withLen;
     return [...withLen].sort((a, b) => b.len - a.len);
-  }, [causas, ordenarGravosaPrimero]);
+  }, [causas, ordenarGravosaPrimero, duracionCausaRealDias]);
 
   /* Auto-slash en fechas */
   const autoSlash = (raw: string) => {
@@ -504,13 +520,6 @@ export default function CalculadoraCondenas() {
     );
   };
   const handleRemoveCausa = (id: string) => openConfirm(id);
-
-  function duracionCausaRealDias(c: Causa) {
-    const ini = parseDMYtoUTC(inicio);
-    if (!ini) return 0;
-    const fin = finDeCausa(ini, c.anios || 0, c.meses || 0, c.dias || 0);
-    return diffDaysInclusiveUTC(ini, fin);
-  }
 
   /* Totales de abonos */
   const totalAbonosPorCausa = useMemo(

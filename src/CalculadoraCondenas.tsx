@@ -194,11 +194,9 @@ const clamp = (n: number, a: number, b: number) => Math.max(a, Math.min(b, n));
 export default function CalculadoraCondenas() {
   /* Formulario base */
   const [inicio, setInicio] = useState("");
-  const [encadenado, setEncadenado] =
-    useState<EncadenadoMode>("dia_siguiente");
+  const encadenado: EncadenadoMode = "dia_siguiente";
   const [regimenGlobal, setRegimenGlobal] = useState<Regimen>("2/3");
-  const [vistaMinimos, setVistaMinimos] =
-    useState<"oficial" | "doctrinal">("oficial");
+  const vistaMinimos: "oficial" = "oficial";
 
   /* Causas */
   const [causas, setCausas] = useState<Causa[]>([]);
@@ -284,9 +282,7 @@ export default function CalculadoraCondenas() {
       if (!raw) return;
       const s = JSON.parse(raw);
       if (typeof s?.inicio === "string") setInicio(s.inicio);
-      if (s?.encadenado) setEncadenado(s.encadenado);
       if (s?.regimenGlobal) setRegimenGlobal(s.regimenGlobal);
-      if (s?.vistaMinimos) setVistaMinimos(s.vistaMinimos);
       if (Array.isArray(s?.causas)) setCausas(s.causas);
       if (typeof s?.ordenarGravosaPrimero === "boolean")
         setOrdenarGravosaPrimero(s.ordenarGravosaPrimero);
@@ -675,14 +671,8 @@ export default function CalculadoraCondenas() {
 
   /* Copiar resumen */
   const copiarResumen = async () => {
-    const encStr =
-      encadenado === "dia_siguiente"
-        ? "Oficial (día siguiente)"
-        : "Doctrinal (mismo día)";
-    const minStr =
-      vistaMinimos === "oficial"
-        ? "Oficial (exclusiva)"
-        : "Doctrinal (inclusiva)";
+    const encStr = "Oficial institucional (dia siguiente)";
+    const minStr = "Oficial institucional (exclusiva)";
 
     const ajustesStr =
       tmAjuste === 0 && cetAjuste === 0
@@ -749,20 +739,12 @@ export default function CalculadoraCondenas() {
     lines.push([
       "Resumen",
       "Encadenado",
-      esc(
-        encadenado === "dia_siguiente"
-          ? "Oficial (día siguiente)"
-          : "Doctrinal (mismo día)"
-      ),
+      esc("Oficial institucional (dia siguiente)"),
     ].join(sep));
     lines.push([
       "Resumen",
       "Vista de mínimos",
-      esc(
-        vistaMinimos === "oficial"
-          ? "Oficial (exclusiva)"
-          : "Doctrinal (inclusiva)"
-      ),
+      esc("Oficial institucional (exclusiva)"),
     ].join(sep));
     lines.push([
       "Resumen",
@@ -854,9 +836,7 @@ export default function CalculadoraCondenas() {
       try {
         const s = JSON.parse(String(reader.result || "{}"));
         if (typeof s.inicio === "string") setInicio(String(s.inicio));
-        if (s.encadenado) setEncadenado(s.encadenado);
         if (s.regimenGlobal) setRegimenGlobal(s.regimenGlobal);
-        if (s.vistaMinimos) setVistaMinimos(s.vistaMinimos);
         if (Array.isArray(s.causas)) setCausas(s.causas);
         if (typeof s.ordenarGravosaPrimero === "boolean")
           setOrdenarGravosaPrimero(s.ordenarGravosaPrimero);
@@ -932,11 +912,7 @@ export default function CalculadoraCondenas() {
   })();
 
   /* Etiqueta principal */
-  const badgeRegla = `UTC · Mínimos: ${
-    vistaMinimos === "oficial"
-      ? "Oficial (exclusiva)"
-      : "Doctrinal (inclusiva)"
-  } · Modo: Normativa · Ajuste fino TM/CET ±1 (opcional)`;
+  const badgeRegla = "UTC - Minimos: Oficial institucional (exclusiva) - Modo: Normativa - Ajuste fino TM/CET +/-1 (opcional)";
 
   /* ====== Herramienta auxiliar: Abonar a Fecha (tipo Excel) ====== */
   const [abonarFechaTermino, setAbonarFechaTermino] = useState<string>("");
@@ -1073,65 +1049,7 @@ export default function CalculadoraCondenas() {
           />
         </div>
 
-        {/* Encadenado */}
-        <div>
-          <label
-            style={{
-              display: "block",
-              fontSize: 12,
-              color: "#6b7280",
-              marginBottom: 6,
-            }}
-          >
-            Encadenado
-          </label>
-          <select
-            value={encadenado}
-            onChange={(e) => setEncadenado(e.target.value as EncadenadoMode)}
-            style={{
-              width: "100%",
-              padding: 10,
-              borderRadius: 10,
-              border: "1px solid #d1d5db",
-              background: "white",
-              cursor: "pointer",
-            }}
-          >
-            <option value="dia_siguiente">Día siguiente (oficial)</option>
-            <option value="mismo_dia">Mismo día (criterio doctrinal)</option>
-          </select>
-        </div>
-
-        {/* Vista de mínimos */}
-        <div>
-          <label
-            style={{
-              display: "block",
-              fontSize: 12,
-              color: "#6b7280",
-              marginBottom: 6,
-            }}
-          >
-            Vista de mínimos (comparativa)
-          </label>
-          <select
-            value={vistaMinimos}
-            onChange={(e) => setVistaMinimos(e.target.value as any)}
-            style={{
-              width: "100%",
-              padding: 10,
-              borderRadius: 10,
-              border: "1px solid #d1d5db",
-              background: "white",
-              cursor: "pointer",
-            }}
-          >
-            <option value="oficial">Oficial (exclusiva)</option>
-            <option value="doctrinal">Doctrinal (inclusiva)</option>
-          </select>
-        </div>
-
-        {/* Régimen (informativo) */}
+        {/* Regimen (informativo) */}
         <div>
           <label
             style={{
@@ -1523,14 +1441,7 @@ export default function CalculadoraCondenas() {
                   <>
                     <ol style={{ marginLeft: 18 }}>
                       <li>
-                        <b>Punto de Partida.</b> Inicio = <b>{inicio}</b>. Modo de Encadenado:{" "}
-                        <b>
-                          {encadenado === "dia_siguiente"
-                            ? "Oficial (día siguiente)"
-                            : "Doctrinal (mismo día)"}
-                        </b>
-                        . Vista de Mínimos:{" "}
-                        <b>{vistaMinimos === "oficial" ? "Oficial (exclusiva)" : "Doctrinal (inclusiva)"}</b>.
+                        <b>Punto de Partida.</b> Inicio = <b>{inicio}</b>. Se aplica criterio oficial institucional: Encadenado <b>dia siguiente</b> y Minimos <b>exclusivos</b>.
                       </li>
                       <li>
                         <b>Suma Bruta de Causas.</b> Se encadenan respetando fin de mes y días inclusivos.{" "}
@@ -1563,10 +1474,7 @@ export default function CalculadoraCondenas() {
                       <li>
                         <b>Tiempo Mínimo (TM).</b> Se aplica el régimen <b>{regimenAplicado}</b>{" "}
                         {regimenAplicado === "1/2" ? "(se cumple la mitad)" : "(se cumplen dos tercios)"}.{" "}
-                        La fecha respeta la vista de mínimos{" "}
-                        {vistaMinimos === "oficial"
-                          ? "(equivalente exclusiva; el día 1 corre desde el día siguiente)"
-                          : "(equivalente inclusiva; el día 1 corre desde el mismo día)"}.
+                        La fecha aplica el criterio oficial institucional (equivalente exclusiva; el dia 1 corre desde el dia siguiente).
                         Resultado: <b>{resultados.tm || "—"}</b>{" "}
                         {tmAjuste !== 0 ? chip(`ajuste visual ${tmAjuste > 0 ? "+" : ""}${tmAjuste}`) : null}
                       </li>
@@ -1575,8 +1483,7 @@ export default function CalculadoraCondenas() {
                         <b>{resultados.tmbi || "—"}</b>.
                       </li>
                       <li>
-                        <b>TM CET.</b> <i>2/3 del tramo inclusivo</i> entre <b>Inicio</b> y <b>TMBI</b>. Vista{" "}
-                        {vistaMinimos === "oficial" ? "Oficial (se muestra 1 día antes)" : "Doctrinal (llegada inclusiva)"}{" "}
+                        <b>TM CET.</b> <i>2/3 del tramo inclusivo</i> entre <b>Inicio</b> y <b>TMBI</b>. Criterio oficial institucional (se muestra 1 dia antes){" "}
                         → <b>{resultados.tmCet || "—"}</b>{" "}
                         {cetAjuste !== 0 ? chip(`ajuste visual ${cetAjuste > 0 ? "+" : ""}${cetAjuste}`) : null}.
                       </li>
@@ -1611,15 +1518,7 @@ export default function CalculadoraCondenas() {
             operaciones se realizan en <b>UTC</b> y con <b>días inclusivos</b>.
           </p>
           <p>
-            <b>Encadenado:</b> Regla que determina cuándo inicia cada causa respecto del término de la anterior.
-            <ul>
-              <li>
-                <b>Oficial (día siguiente):</b> La siguiente causa comienza el día siguiente al término de la previa.
-              </li>
-              <li>
-                <b>Doctrinal (mismo día):</b> La siguiente causa inicia el mismo día del término de la previa (referencia comparativa).
-              </li>
-            </ul>
+            <b>Encadenado:</b> Regla que determina cuando inicia cada causa respecto del termino de la anterior. Se aplica criterio oficial institucional: la siguiente causa comienza el dia siguiente al termino de la previa.
           </p>
           <p>
             <b>Suma Bruta de Causas:</b> Total de duración de todas las causas encadenadas, antes de considerar abonos.
@@ -1662,15 +1561,14 @@ export default function CalculadoraCondenas() {
                 <b>2/3:</b> Se cumplen dos tercios.
               </li>
             </ul>
-            La <b>Vista de Mínimos</b> define si el día 1 corre desde el día siguiente (Oficial, exclusiva)
-            o desde el mismo día (Doctrinal, inclusiva).
+            Se aplica criterio oficial institucional: dia 1 desde el dia siguiente (equivalente exclusiva).
           </p>
           <p>
             <b>TMBI:</b> Fecha <i>TM − 12 meses</i>, respetando el fin de mes.
           </p>
           <p>
             <b>TM CET:</b> <b>2/3 del tramo inclusivo</b> entre <b>Inicio</b> y <b>TMBI</b>.
-            Vista Oficial: se muestra 1 día antes; Vista Doctrinal: llegada inclusiva.
+            Criterio oficial institucional: se muestra 1 dia antes.
           </p>
           <p>
             <b>Ajustes Finos (±1 día):</b> Desplazan solo la <b>fecha mostrada</b> de TM/CET. No cambian la base efectiva.

@@ -1422,12 +1422,12 @@ export default function CalculadoraCondenas() {
         onToggle={(e) => setEjemploOpen((e.target as HTMLDetailsElement).open)}
       >
         <summary style={{ cursor: "pointer", fontWeight: 600, fontSize: 15 }}>
-          Ejemplo simplificado (paso a paso)
+          Desglose del cómputo
         </summary>
         <div style={{ marginTop: 8, fontSize: 14, lineHeight: 1.55 }}>
           {!inicio || causasOrdenadas.length === 0 ? (
             <div style={{ fontSize: 12, color: "#6b7280" }}>
-              Ingresa <b>Inicio</b> y al menos <b>una causa</b> para ver la explicación dinámica.
+              Ingresa <b>Inicio</b> y al menos <b>una causa</b> para ver el desglose dinámico del cómputo.
             </div>
           ) : (
             <>
@@ -1583,7 +1583,7 @@ export default function CalculadoraCondenas() {
         onToggle={(e) => setAbonarOpen((e.target as HTMLDetailsElement).open)}
       >
         <summary style={{ cursor: "pointer", fontWeight: 600, fontSize: 15 }}>
-          Herramienta auxiliar: Abonar a Fecha (tipo Excel)
+          Abonar a fecha
         </summary>
         <div
           style={{
@@ -1691,7 +1691,7 @@ export default function CalculadoraCondenas() {
       {/* Opciones avanzadas */}
       <details id="opciones-avanzadas" style={{ marginTop: 16 }}>
         <summary style={{ cursor: "pointer", fontWeight: 600, fontSize: 15 }}>
-          Opciones avanzadas
+          Opciones complementarias
         </summary>
 
         {/* (1) ABONOS GLOBALES */}

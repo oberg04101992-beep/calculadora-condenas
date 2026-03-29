@@ -113,8 +113,17 @@ function diffDaysInclusiveUTC(a: Date, b: Date): number {
 
 /* ===== Encadenado de causas (TO oficial) ===== */
 function finDeCausa(d: Date, anios: number, meses: number, dias: number) {
-  const base = addYearsMonthsUTC(d, anios || 0, meses || 0);
-  return dias && dias > 0 ? addDaysUTC(base, dias - 1) : base;
+  const y = anios || 0;
+  const m = meses || 0;
+  const dd = dias || 0;
+  const base = addYearsMonthsUTC(d, y, m);
+
+  if (dd <= 0) return base;
+
+  // Regla oficial: si hay a�os/meses y adem�s d�as, los d�as se suman completos.
+  // Si la causa es solo en d�as, se mantiene conteo inclusivo (days - 1).
+  if (y === 0 && m === 0) return addDaysUTC(base, dd - 1);
+  return addDaysUTC(base, dd);
 }
 function encadenarExpediente(
   causas: Causa[],
@@ -340,9 +349,10 @@ export default function CalculadoraCondenas() {
 
   /* Derivado: régimen aplicado (informativo) */
   const regimenAplicado = useMemo<Regimen>(() => {
+    if (regimenSugeridoPorCausas === "2/3") return "2/3";
     if (!regimenGlobal) return "2/3";
     return regimenGlobal;
-  }, [regimenGlobal]);
+  }, [regimenGlobal, regimenSugeridoPorCausas]);
 
   /* Orden visual de causas */
   const causasOrdenadas = useMemo(() => {
@@ -392,25 +402,28 @@ export default function CalculadoraCondenas() {
     return fmtDMY(addDaysUTC(ini, baseEfectivaDias - 1));
   }, [inicio, baseEfectivaDias]);
 
-  /* TM/TMBI/CET automáticos (con override manual opcional en TM/TMBI) */
+  /* TM/TMBI/CET autom�ticos (con override manual opcional en TM/TMBI) */
   const tmAuto = useMemo(() => {
     const ini = parseDMYtoUTC(inicio);
     if (!ini || baseEfectivaDias <= 0) return "";
     const ratio = regimenAplicado === "1/2" ? 1 / 2 : 2 / 3;
-    const diasTM = Math.ceil(baseEfectivaDias * ratio);
+    const diasTM = Math.floor(baseEfectivaDias * ratio);
 
-    // Vista Oficial: equivalente exclusiva (día 1 = día siguiente)
-    const startForTM = vistaMinimos === "oficial" ? addDaysUTC(ini, 1) : ini;
-    const llegada = addDaysUTC(startForTM, Math.max(0, diasTM - 1));
+
+    // Criterio oficial: conteo exclusivo (dia 1 = dia siguiente).
+    let llegada = addDaysUTC(ini, Math.max(0, diasTM));
+    if (llegada.getUTCDate() < ini.getUTCDate()) {
+      llegada = addDaysUTC(llegada, -1);
+    }
     return fmtDMY(llegada);
-  }, [inicio, baseEfectivaDias, regimenAplicado, vistaMinimos]);
+  }, [inicio, baseEfectivaDias, regimenAplicado]);
 
   const tmMostrado = useMemo(
     () => (tmIngresado ? tmIngresado : tmAuto),
     [tmIngresado, tmAuto]
   );
 
-  // TMBI desde TM (manual o auto) – normativa: TM − 12 meses (con fin de mes)
+  // TMBI desde TM (manual o auto) � normativa: TM - 12 meses (con fin de mes)
   const tmbiAuto = useMemo(() => {
     const tmD = parseDMYtoUTC(tmMostrado || tmAuto);
     if (!tmD) return "";
@@ -422,20 +435,22 @@ export default function CalculadoraCondenas() {
     [tmbiIngresado, tmbiAuto]
   );
 
-  // CET automático desde Inicio → TMBI (inclusivo) con ceil
+  // CET automatico desde Inicio a TMBI con ajuste por cierre de tramo.
   const cetAuto = useMemo(() => {
     const ini = parseDMYtoUTC(inicio);
     const tmbi = parseDMYtoUTC(tmbiMostrado);
     if (!ini || !tmbi) return "";
     const L = Math.max(1, diffDaysInclusiveUTC(ini, tmbi));
-    const diasCET = Math.ceil(L * (2 / 3)); // recomendación: ceil
-    const llegada = addDaysUTC(ini, Math.max(0, diasCET - 1));
-    const mostrar =
-      vistaMinimos === "oficial" ? addDaysUTC(llegada, -1) : llegada;
-    return fmtDMY(mostrar);
-  }, [inicio, tmbiMostrado, vistaMinimos]);
+    const diasCET = Math.ceil(L * (2 / 3));
+    let llegada = addDaysUTC(ini, Math.max(0, diasCET - 1));
 
-  /* Ajuste fino (±1) solo de presentación (no toca base) */
+    if (tmbi.getUTCDate() < ini.getUTCDate()) {
+      llegada = addDaysUTC(llegada, -1);
+    }
+    return fmtDMY(llegada);
+  }, [inicio, tmbiMostrado]);
+
+  /* Ajuste fino (�1) solo de presentaci�n (no toca base) */
   const tmDisplay = useMemo(() => {
     const d = parseDMYtoUTC(tmMostrado);
     if (!d) return "";
@@ -448,7 +463,7 @@ export default function CalculadoraCondenas() {
     return fmtDMY(addDaysUTC(d, cetAjuste));
   }, [cetAuto, cetAjuste]);
 
-  /* Métricas auxiliares (L y CET días) */
+  /* M�tricas auxiliares (L y CET d�as) */
   const metricas = useMemo(() => {
     const ini = parseDMYtoUTC(inicio);
     const tmbi = parseDMYtoUTC(tmbiMostrado);
@@ -518,9 +533,29 @@ export default function CalculadoraCondenas() {
     [abonosTotalesExpediente]
   );
   const totalAbonosTodos = totalAbonosPorCausa + totalAbonosGlobal;
+  const hayAbonosPorCausaYGlobal =
+    totalAbonosPorCausa > 0 && totalAbonosGlobal > 0;
 
   /* Sugerencia simple a TO objetivo (opcional) */
   const [simulados, setSimulados] = useState<Resultados | null>(null);
+  const mensajeFaltantesDistribucion = useMemo(() => {
+    const faltantes: string[] = [];
+    if (!parseDMYtoUTC(inicio)) faltantes.push("ingresar Inicio");
+    if (causasOrdenadas.length === 0)
+      faltantes.push("agregar al menos una causa");
+
+    const toObjetivoTrim = (toObjetivo || "").trim();
+    if (!toObjetivoTrim) {
+      faltantes.push("ingresar TO objetivo");
+    } else if (!parseDMYtoUTC(toObjetivoTrim)) {
+      faltantes.push("corregir TO objetivo en formato DD/MM/AAAA");
+    }
+
+    return faltantes.length > 0
+      ? `Para usar esta sección: ${faltantes.join(", ")}.`
+      : "";
+  }, [inicio, causasOrdenadas.length, toObjetivo]);
+
   const sugerirDistribucion = () => {
     setSugeridos(null);
     setSimulados(null);
@@ -630,15 +665,17 @@ export default function CalculadoraCondenas() {
     );
     const toPrev = D_eff > 0 ? fmtDMY(addDaysUTC(ini, D_eff - 1)) : "";
 
+
     const tmbi = parseDMYtoUTC(tmbiMostrado);
     const cet = (() => {
       if (!ini || !tmbi) return "";
       const L = Math.max(1, diffDaysInclusiveUTC(ini, tmbi));
       const diasCET = Math.ceil(L * (2 / 3));
-      const fechaCET = addDaysUTC(ini, Math.max(0, diasCET - 1));
-      const mostrar =
-        vistaMinimos === "oficial" ? addDaysUTC(fechaCET, -1) : fechaCET;
-      return fmtDMY(mostrar);
+      let fechaCET = addDaysUTC(ini, Math.max(0, diasCET - 1));
+      if (tmbi.getUTCDate() < ini.getUTCDate()) {
+        fechaCET = addDaysUTC(fechaCET, -1);
+      }
+      return fmtDMY(fechaCET);
     })();
 
     return {
@@ -919,15 +956,34 @@ export default function CalculadoraCondenas() {
   const [abonarAnios, setAbonarAnios] = useState<number>(0);
   const [abonarMeses, setAbonarMeses] = useState<number>(0);
   const [abonarDias, setAbonarDias] = useState<number>(0);
+  const abonarFechaTerminoDate = useMemo(
+    () => parseDMYtoUTC(abonarFechaTermino),
+    [abonarFechaTermino]
+  );
+  const mensajeAbonarFecha = useMemo(() => {
+    const f = (abonarFechaTermino || "").trim();
+    if (!f) {
+      return "Para usar este modulo, ingresa Fecha Termino (DD/MM/AAAA).";
+    }
+    if (!abonarFechaTerminoDate) {
+      return "Fecha Termino invalida. Usa el formato DD/MM/AAAA.";
+    }
+    return "";
+  }, [abonarFechaTermino, abonarFechaTerminoDate]);
+  const abonarSinDescuento =
+    abonarAnios === 0 && abonarMeses === 0 && abonarDias === 0;
 
   const resultadoAbonarFecha = useMemo(() => {
-    const ft = parseDMYtoUTC(abonarFechaTermino);
-    if (!ft) return "";
-    // Resta Y/M con respeto a fin de mes y luego Días
-    const menosYM = addYearsMonthsUTC(ft, -Math.max(0, abonarAnios), -Math.max(0, abonarMeses));
+    if (!abonarFechaTerminoDate) return "";
+    // Resta Y/M con respeto a fin de mes y luego Dias
+    const menosYM = addYearsMonthsUTC(
+      abonarFechaTerminoDate,
+      -Math.max(0, abonarAnios),
+      -Math.max(0, abonarMeses)
+    );
     const menosYMD = addDaysUTC(menosYM, -Math.max(0, abonarDias));
     return fmtDMY(menosYMD);
-  }, [abonarFechaTermino, abonarAnios, abonarMeses, abonarDias]);
+  }, [abonarFechaTerminoDate, abonarAnios, abonarMeses, abonarDias]);
 
   /* =================== UI =================== */
   return (
@@ -1063,55 +1119,75 @@ export default function CalculadoraCondenas() {
           </label>
           <div
             style={{
-              display: "flex",
-              gap: 10,
-              alignItems: "center",
-              flexWrap: "wrap",
+              display: "grid",
+              gap: 8,
             }}
           >
-            <span
+            <div
               style={{
-                padding: "2px 8px",
-                borderRadius: 999,
-                fontSize: 12,
-                border: "1px solid #e5e7eb",
-                background: "#f3f4f6",
-              }}
-              title="Régimen aplicado al expediente"
-            >
-              aplicado: <b>{regimenAplicado}</b>
-            </span>
-            <span
-              title="Sugerencia automática a partir de las causas"
-              style={{
-                padding: "2px 8px",
-                borderRadius: 999,
-                fontSize: 12,
-                border: "1px solid #e5e7eb",
-                background: "#eef2ff",
-                color: "#3730a3",
+                display: "flex",
+                gap: 12,
+                alignItems: "center",
+                flexWrap: "wrap",
               }}
             >
-              sugerido por causas: <b>{regimenSugeridoPorCausas}</b>
-            </span>
-            <label style={{ display: "flex", gap: 6, alignItems: "center" }}>
-              <input
-                type="radio"
-                name="regimen"
-                checked={regimenGlobal === "1/2"}
-                onChange={() => setRegimenGlobal("1/2")}
-              />{" "}
-              1/2
-            </label>
-            <label style={{ display: "flex", gap: 6, alignItems: "center" }}>
-              <input
-                type="radio"
-                name="regimen"
-                checked={regimenGlobal === "2/3"}
-                onChange={() => setRegimenGlobal("2/3")}
-              />{" "}
-              2/3
-            </label>
+              <span style={{ fontSize: 12, color: "#4b5563" }}>
+                Seleccion manual:
+              </span>
+              <label style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                <input
+                  type="radio"
+                  name="regimen"
+                  checked={regimenAplicado === "1/2"}
+                  disabled={regimenSugeridoPorCausas === "2/3"}
+                  onChange={() => setRegimenGlobal("1/2")}
+                />{" "}
+                1/2
+              </label>
+              <label style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                <input
+                  type="radio"
+                  name="regimen"
+                  checked={regimenAplicado === "2/3"}
+                  onChange={() => setRegimenGlobal("2/3")}
+                />{" "}
+                2/3
+              </label>
+              <span
+                style={{
+                  padding: "2px 8px",
+                  borderRadius: 999,
+                  fontSize: 12,
+                  border: "1px solid #e5e7eb",
+                  background: "#f3f4f6",
+                }}
+                title="Regimen aplicado al expediente"
+              >
+                aplicado: <b>{regimenAplicado}</b>
+              </span>
+            </div>
+
+            {regimenSugeridoPorCausas !== regimenAplicado ? (
+              <div style={{ fontSize: 12, color: "#4b5563" }}>
+                Sugerido por causas: <b>{regimenSugeridoPorCausas}</b>.
+              </div>
+            ) : null}
+
+            {regimenSugeridoPorCausas === "2/3" ? (
+              <div
+                style={{
+                  padding: "6px 8px",
+                  borderRadius: 8,
+                  fontSize: 12,
+                  border: "1px solid #f59e0b",
+                  background: "#fffbeb",
+                  color: "#92400e",
+                }}
+              >
+                Observacion: por causas activas, el expediente exige regimen
+                2/3.
+              </div>
+            ) : null}
           </div>
         </div>
       </div>
@@ -1583,7 +1659,7 @@ export default function CalculadoraCondenas() {
         onToggle={(e) => setAbonarOpen((e.target as HTMLDetailsElement).open)}
       >
         <summary style={{ cursor: "pointer", fontWeight: 600, fontSize: 15 }}>
-          Abonar a fecha
+          Abonar a fecha (apoyo operativo)
         </summary>
         <div
           style={{
@@ -1595,8 +1671,10 @@ export default function CalculadoraCondenas() {
           }}
         >
           <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 8 }}>
-            Replica tu hoja Excel “Abonar a Fecha”: resta <b>Años/Meses/Días</b> a una fecha de término,
-            respetando fin de mes y con días inclusivos. No altera el cómputo base.
+            Modulo de apoyo institucional: calcula una nueva fecha al descontar
+            <b> Anios, Meses y Dias </b>
+            desde una Fecha Termino. Este bloque es informativo y no modifica
+            el calculo principal del expediente.
           </div>
 
           <div
@@ -1679,11 +1757,46 @@ export default function CalculadoraCondenas() {
             </div>
           </div>
 
-          <div style={{ marginTop: 10 }}>
-            <div style={{ fontSize: 12, color: "#6b7280" }}>Resultado</div>
-            <div style={{ fontSize: 18, fontWeight: 800, marginTop: 2 }}>
-              {resultadoAbonarFecha || "—"}
+          {mensajeAbonarFecha ? (
+            <div
+              style={{
+                marginTop: 8,
+                padding: 8,
+                borderRadius: 8,
+                border: "1px solid #d1d5db",
+                background: "#f9fafb",
+                color: "#374151",
+                fontSize: 12,
+              }}
+            >
+              {mensajeAbonarFecha}
             </div>
+          ) : null}
+
+          <div
+            style={{
+              marginTop: 10,
+              border: "1px solid #e5e7eb",
+              borderRadius: 10,
+              padding: 10,
+              background: "#f9fafb",
+            }}
+          >
+            <div style={{ fontSize: 12, color: "#6b7280" }}>
+              Fecha resultante (descuento aplicado)
+            </div>
+            <div style={{ fontSize: 20, fontWeight: 800, marginTop: 2 }}>
+              {resultadoAbonarFecha || "-"}
+            </div>
+            {abonarFechaTerminoDate ? (
+              <div style={{ marginTop: 4, fontSize: 12, color: "#4b5563" }}>
+                Base: {abonarFechaTermino || "-"} | Descuento: {abonarAnios}a{" "}
+                {abonarMeses}m {abonarDias}d
+                {abonarSinDescuento
+                  ? " (sin descuento, mantiene fecha base)"
+                  : ""}
+              </div>
+            ) : null}
           </div>
         </div>
       </details>
@@ -1741,7 +1854,26 @@ export default function CalculadoraCondenas() {
           }}
         >
           <div style={{ fontWeight: 700, marginBottom: 6 }}>
-            Distribución de abonos por causa y TO objetivo (opcional)
+            Propuesta de distribución de abonos por causa y TO objetivo
+          </div>
+          <div style={{ fontSize: 12, color: "#4b5563", marginBottom: 8 }}>
+            Uso institucional: esta sección sugiere una distribución de
+            referencia para análisis operativo. No altera por sí sola el
+            cálculo base ni los abonos por causa.
+          </div>
+          <div
+            style={{
+              marginBottom: 8,
+              padding: 8,
+              borderRadius: 8,
+              border: "1px solid #d1d5db",
+              background: "#f9fafb",
+              color: "#374151",
+              fontSize: 12,
+            }}
+          >
+            Esta distribución es solo referencial y no modifica automáticamente
+            los abonos por causa.
           </div>
 
           <div
@@ -1752,8 +1884,43 @@ export default function CalculadoraCondenas() {
             }}
           >
             <div style={{ gridColumn: "span 3" }}>
-              {chip(`Total abonos (por causa + global): ${totalAbonosTodos}`)}
+              {chip(`Total abonos acumulados (causa + global): ${totalAbonosTodos}`)}
             </div>
+            <div
+              style={{
+                gridColumn: "span 3",
+                padding: 8,
+                borderRadius: 8,
+                border: "1px solid #e5e7eb",
+                background: "#f9fafb",
+              }}
+            >
+              <div style={{ fontSize: 12, color: "#6b7280" }}>
+                Resumen de descuentos que inciden en la base efectiva
+              </div>
+              <div style={{ marginTop: 4, fontSize: 13, color: "#111827" }}>
+                Abonos por causa: <b>{totalAbonosPorCausa}</b> dias · Abono
+                global: <b>{totalAbonosGlobal}</b> dias · Total:{" "}
+                <b>{totalAbonosTodos}</b> dias · Base efectiva actual:{" "}
+                <b>{resultados._debug?.diasConAbonosTermino ?? "—"}</b> dias
+              </div>
+            </div>
+            {hayAbonosPorCausaYGlobal ? (
+              <div
+                style={{
+                  gridColumn: "span 3",
+                  padding: 8,
+                  borderRadius: 8,
+                  border: "1px solid #f59e0b",
+                  background: "#fffbeb",
+                  color: "#92400e",
+                  fontSize: 12,
+                }}
+              >
+                Advertencia: existen abonos por causa y abono global. Ambos se
+                acumulan en la base efectiva.
+              </div>
+            ) : null}
             <div style={{ gridColumn: "span 2" }}>
               <label
                 style={{
@@ -1794,7 +1961,7 @@ export default function CalculadoraCondenas() {
                 cursor: "pointer",
               }}
             >
-              Sugerir distribución
+              Generar propuesta (sin aplicar cambios)
             </button>
             <button
               onClick={aplicarSugerencia}
@@ -1808,9 +1975,25 @@ export default function CalculadoraCondenas() {
                 cursor: sugeridos ? "pointer" : "not-allowed",
               }}
             >
-              Aplicar distribución sugerida
+              Aplicar propuesta a abonos por causa
             </button>
           </div>
+
+          {mensajeFaltantesDistribucion ? (
+            <div
+              style={{
+                marginTop: 8,
+                padding: 8,
+                borderRadius: 8,
+                border: "1px solid #d1d5db",
+                background: "#f9fafb",
+                color: "#374151",
+                fontSize: 12,
+              }}
+            >
+              {mensajeFaltantesDistribucion}
+            </div>
+          ) : null}
 
           {/* Mensaje de sugerencia */}
           {sugerenciaInfo ? (
@@ -1851,13 +2034,16 @@ export default function CalculadoraCondenas() {
                 <div style={{ fontSize: 12, color: "#6b7280" }}>Causa</div>
                 <div style={{ fontSize: 12, color: "#6b7280" }}>Actual</div>
                 <div style={{ fontSize: 12, color: "#6b7280" }}>Sugerido</div>
-                {causasOrdenadas.map((c) => {
+                {causasOrdenadas.map((c, idx) => {
                   const sug =
                     sugeridos.find((s) => s.id === c.id)?.nuevoAbono ??
                     c.abonoCausa;
+                  const nombreCausa = (c.nombre || "").trim();
+                  const etiquetaCausa =
+                    nombreCausa.length > 0 ? nombreCausa : `Causa ${idx + 1}`;
                   return (
                     <React.Fragment key={c.id}>
-                      <div>{c.nombre || c.id}</div>
+                      <div>{etiquetaCausa}</div>
                       <div>{c.abonoCausa}</div>
                       <div>{sug}</div>
                     </React.Fragment>
@@ -1961,71 +2147,101 @@ export default function CalculadoraCondenas() {
             }}
           >
             <div style={{ fontWeight: 700, marginBottom: 6 }}>
-              Ajustes finos (presentación) — poco frecuente
+              Ajustes finos de presentacion (uso puntual)
             </div>
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "1fr 1fr",
-                gap: 8,
-                alignItems: "end",
-              }}
-            >
-              <div>
-                <label
-                  style={{ display: "block", fontSize: 12, color: "#6b7280" }}
-                >
-                  Ajuste fino TM (±1 día)
-                </label>
-                <select
-                  value={tmAjuste}
-                  onChange={(e) =>
-                    setTmAjuste(Number(e.target.value) as -1 | 0 | 1)
-                  }
+            <div style={{ fontSize: 12, color: "#4b5563", marginBottom: 8 }}>
+              Ajusta solo la <b>fecha mostrada</b> de TM y TM CET. No modifica
+              la base ni el motor de calculo; usar solo para correcciones
+              operativas de presentacion.
+            </div>
+            {!inicio || causasOrdenadas.length === 0 ? (
+              <div
+                style={{
+                  marginTop: 4,
+                  padding: 8,
+                  borderRadius: 8,
+                  border: "1px solid #d1d5db",
+                  background: "#f9fafb",
+                  color: "#374151",
+                  fontSize: 12,
+                }}
+              >
+                Para usar Ajustes finos, ingresa Inicio y al menos una causa.
+              </div>
+            ) : (
+              <>
+                <div
                   style={{
-                    width: "100%",
-                    padding: 10,
-                    borderRadius: 10,
-                    border: "1px solid #d1d5db",
-                    background: "#fff",
-                    cursor: "pointer",
+                    display: "grid",
+                    gridTemplateColumns: "1fr 1fr",
+                    gap: 8,
+                    alignItems: "end",
                   }}
                 >
-                  <option value={-1}>−1</option>
-                  <option value={0}>0</option>
-                  <option value={1}>+1</option>
-                </select>
-              </div>
-              <div>
-                <label
-                  style={{ display: "block", fontSize: 12, color: "#6b7280" }}
-                >
-                  Ajuste fino CET (±1 día)
-                </label>
-                <select
-                  value={cetAjuste}
-                  onChange={(e) =>
-                    setCetAjuste(Number(e.target.value) as -1 | 0 | 1)
-                  }
-                  style={{
-                    width: "100%",
-                    padding: 10,
-                    borderRadius: 10,
-                    border: "1px solid #d1d5db",
-                    background: "#fff",
-                    cursor: "pointer",
-                  }}
-                >
-                  <option value={-1}>−1</option>
-                  <option value={0}>0</option>
-                  <option value={1}>+1</option>
-                </select>
-              </div>
-            </div>
-            <div style={{ marginTop: 6, fontSize: 12, color: "#4b5563" }}>
-              Desplaza la <b>fecha mostrada</b> (no la base de cálculo) para
-              cuadrar expedientes con corrimientos mínimos.
-            </div>
+                  <div>
+                    <label
+                      style={{
+                        display: "block",
+                        fontSize: 12,
+                        color: "#6b7280",
+                      }}
+                    >
+                      Ajuste TM (+/-1 dia)
+                    </label>
+                    <select
+                      value={tmAjuste}
+                      onChange={(e) =>
+                        setTmAjuste(Number(e.target.value) as -1 | 0 | 1)
+                      }
+                      style={{
+                        width: "100%",
+                        padding: 10,
+                        borderRadius: 10,
+                        border: "1px solid #d1d5db",
+                        background: "#fff",
+                        cursor: "pointer",
+                      }}
+                    >
+                      <option value={-1}>-1 dia (adelanta)</option>
+                      <option value={0}>0 (sin ajuste)</option>
+                      <option value={1}>+1 dia (atrasa)</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label
+                      style={{
+                        display: "block",
+                        fontSize: 12,
+                        color: "#6b7280",
+                      }}
+                    >
+                      Ajuste TM CET (+/-1 dia)
+                    </label>
+                    <select
+                      value={cetAjuste}
+                      onChange={(e) =>
+                        setCetAjuste(Number(e.target.value) as -1 | 0 | 1)
+                      }
+                      style={{
+                        width: "100%",
+                        padding: 10,
+                        borderRadius: 10,
+                        border: "1px solid #d1d5db",
+                        background: "#fff",
+                        cursor: "pointer",
+                      }}
+                    >
+                      <option value={-1}>-1 dia (adelanta)</option>
+                      <option value={0}>0 (sin ajuste)</option>
+                      <option value={1}>+1 dia (atrasa)</option>
+                    </select>
+                  </div>
+                </div>
+                <div style={{ marginTop: 8, fontSize: 12, color: "#4b5563" }}>
+                  Vista actual: TM <b>{resultados.tm || "-"}</b> | TM CET <b>{resultados.tmCet || "-"}</b>.
+                </div>
+              </>
+            )}
           </div>
 
           {/* Ingresos manuales */}
@@ -2038,8 +2254,35 @@ export default function CalculadoraCondenas() {
             }}
           >
             <div style={{ fontWeight: 700, marginBottom: 6 }}>
-              Ingresos manuales (opcional)
+              Ingresos manuales de referencia (uso excepcional)
             </div>
+            <div style={{ fontSize: 12, color: "#4b5563", marginBottom: 8 }}>
+              Permite ingresar TM y/o TMBI manual para contraste operativo o
+              validacion documental. Si un campo queda vacio, se mantiene el
+              valor automatico.
+            </div>
+            {!inicio || causasOrdenadas.length === 0 ? (
+              <div
+                style={{
+                  marginTop: 4,
+                  marginBottom: 8,
+                  padding: 8,
+                  borderRadius: 8,
+                  border: "1px solid #d1d5db",
+                  background: "#f9fafb",
+                  color: "#374151",
+                  fontSize: 12,
+                }}
+              >
+                Para usar esta seccion con contexto, ingresa Inicio y al menos
+                una causa.
+              </div>
+            ) : (
+              <div style={{ marginBottom: 8, fontSize: 12, color: "#4b5563" }}>
+                Referencia automatica actual: TM <b>{tmAuto || "-"}</b> | TMBI{" "}
+                <b>{tmbiAuto || "-"}</b>.
+              </div>
+            )}
 
             <div
               style={{
@@ -2068,6 +2311,9 @@ export default function CalculadoraCondenas() {
                   inputMode="numeric"
                   aria-label="TM ingresado por el funcionario/a"
                 />
+                <div style={{ marginTop: 4, fontSize: 12, color: "#6b7280" }}>
+                  Si no ingresas TM manual, se utiliza TM automatico.
+                </div>
               </div>
 
               <div>
@@ -2090,6 +2336,9 @@ export default function CalculadoraCondenas() {
                   inputMode="numeric"
                   aria-label="TMBI ingresado por el funcionario/a"
                 />
+                <div style={{ marginTop: 4, fontSize: 12, color: "#6b7280" }}>
+                  Si no ingresas TMBI manual, se utiliza TMBI automatico.
+                </div>
               </div>
             </div>
           </div>

@@ -105,32 +105,35 @@ const AbonosDistribucion: React.FC<Props> = ({
         <div style={{ fontSize: 12, color: "#6b7280" }}>Abono (editar)</div>
 
         {Array.isArray(causas) && causas.length > 0 ? (
-          causas.map((c) => (
-            <React.Fragment key={c.id}>
-              <div>{c.nombre || c.id}</div>
-              <div>{c.anios}</div>
-              <div>{c.meses}</div>
-              <div>{c.dias}</div>
-              <div>{c.regimen}</div>
-              <div>{c.abonoCausa}</div>
-              <div>
-                <input
-                  type="number"
-                  min={0}
-                  value={c.abonoCausa}
-                  onChange={(e) => handleAbonoInput(c.id, e.target.value)}
-                  style={{
-                    width: "100%",
-                    padding: 8,
-                    borderRadius: 8,
-                    border: "1px solid #d1d5db",
-                    background: "#fff",
-                  }}
-                  aria-label={`Editar abono para ${c.nombre || c.id}`}
-                />
-              </div>
-            </React.Fragment>
-          ))
+          causas.map((c, idx) => {
+            const nombreCausa = (c.nombre || "").trim() || `Causa ${idx + 1}`;
+            return (
+              <React.Fragment key={c.id}>
+                <div>{nombreCausa}</div>
+                <div>{c.anios}</div>
+                <div>{c.meses}</div>
+                <div>{c.dias}</div>
+                <div>{c.regimen}</div>
+                <div>{c.abonoCausa}</div>
+                <div>
+                  <input
+                    type="number"
+                    min={0}
+                    value={c.abonoCausa}
+                    onChange={(e) => handleAbonoInput(c.id, e.target.value)}
+                    style={{
+                      width: "100%",
+                      padding: 8,
+                      borderRadius: 8,
+                      border: "1px solid #d1d5db",
+                      background: "#fff",
+                    }}
+                    aria-label={`Editar abono para ${nombreCausa}`}
+                  />
+                </div>
+              </React.Fragment>
+            );
+          })
         ) : (
           <div style={{ gridColumn: "1 / -1", fontSize: 12, color: "#6b7280" }}>
             No hay causas para distribuir abonos.

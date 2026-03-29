@@ -426,9 +426,12 @@ export default function CalculadoraCondenas() {
   // TMBI desde TM (manual o auto) – normativa: TM - 12 meses (con fin de mes)
   const tmbiAuto = useMemo(() => {
     const tmD = parseDMYtoUTC(tmMostrado || tmAuto);
-    if (!tmD) return "";
-    return fmtDMY(addYearsMonthsUTC(tmD, -1, 0));
-  }, [tmMostrado, tmAuto]);
+    const ini = parseDMYtoUTC(inicio);
+    if (!tmD || !ini) return "";
+    const tmbi = addYearsMonthsUTC(tmD, -1, 0);
+    const tmbiClampeado = tmbi.getTime() < ini.getTime() ? ini : tmbi;
+    return fmtDMY(tmbiClampeado);
+  }, [tmMostrado, tmAuto, inicio]);
 
   const tmbiMostrado = useMemo(
     () => (tmbiIngresado ? tmbiIngresado : tmbiAuto),

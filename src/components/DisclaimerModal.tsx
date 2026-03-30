@@ -47,24 +47,18 @@ export default function DisclaimerModal() {
     >
       <div
         onClick={(e) => e.stopPropagation()}
+        className="disclaimer-panel"
         style={{
-          width: "min(720px, 96vw)",
+          width: "min(820px, 96vw)",
           background: "#fff",
           borderRadius: 16,
           boxShadow: "0 12px 36px rgba(0,0,0,.22)",
-          padding: 20,
+          padding: 14,
           border: "1px solid #e5e7eb",
         }}
       >
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            gap: 8,
-            alignItems: "center",
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <div className="disclaimer-header">
+          <div className="disclaimer-title-wrap">
             <div
               aria-hidden
               style={{
@@ -91,13 +85,14 @@ export default function DisclaimerModal() {
           <button
             aria-label="Cerrar"
             onClick={closeNow}
+            className="disclaimer-close"
             style={{
-              width: 30,
-              height: 30,
+              width: 36,
+              height: 36,
               border: "1px solid #e5e7eb",
               background: "#fff",
               borderRadius: 8,
-              padding: "4px 8px",
+              padding: 0,
               cursor: "pointer",
             }}
           >
@@ -105,21 +100,22 @@ export default function DisclaimerModal() {
           </button>
         </div>
 
+        <div className="disclaimer-body">
         <div
+          className="disclaimer-section disclaimer-section--intro"
           style={{
-            marginTop: 10,
             background: "#f9fafb",
             border: "1px solid #e5e7eb",
             borderRadius: 12,
-            padding: 12,
-            lineHeight: 1.55,
+            padding: 10,
+            lineHeight: 1.5,
             color: "#374151",
           }}
         >
-          <div style={{ fontWeight: 700, marginBottom: 6 }}>
+          <div className="disclaimer-section-title" style={{ fontWeight: 700, marginBottom: 6 }}>
             Qué es esta herramienta
           </div>
-          <div style={{ fontSize: 14 }}>
+          <div className="disclaimer-copy" style={{ fontSize: 14 }}>
             Esta calculadora es una herramienta de <b>apoyo orientativo</b> para
             revisar cómputos del expediente de forma rápida. No reemplaza la
             revisión profesional, la normativa vigente ni los registros
@@ -128,26 +124,20 @@ export default function DisclaimerModal() {
         </div>
 
         <div
+          className="disclaimer-section disclaimer-section--results"
           style={{
-            marginTop: 10,
             background: "#ffffff",
             border: "1px solid #e5e7eb",
             borderRadius: 12,
-            padding: 12,
-            lineHeight: 1.55,
+            padding: 10,
+            lineHeight: 1.5,
             color: "#374151",
           }}
         >
-          <div style={{ fontWeight: 700, marginBottom: 6 }}>
+          <div className="disclaimer-section-title" style={{ fontWeight: 700, marginBottom: 6 }}>
             Qué resultados entrega
           </div>
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-              gap: 8,
-            }}
-          >
+          <div className="disclaimer-results-grid">
             {[
               ["TO", "Fecha final de cumplimiento de la condena."],
               ["TM", "Fecha en que se cumple el mínimo exigido según el régimen."],
@@ -156,6 +146,7 @@ export default function DisclaimerModal() {
             ].map(([sigla, detalle]) => (
               <div
                 key={sigla}
+                className="disclaimer-result-card"
                 style={{
                   border: "1px solid #e5e7eb",
                   borderRadius: 10,
@@ -170,38 +161,31 @@ export default function DisclaimerModal() {
         </div>
 
         <div
+          className="disclaimer-section disclaimer-section--review"
           style={{
-            marginTop: 10,
             background: "#fffbeb",
             border: "1px solid #f59e0b",
             borderRadius: 12,
-            padding: 12,
-            lineHeight: 1.55,
+            padding: 10,
+            lineHeight: 1.5,
             color: "#92400e",
           }}
         >
-          <div style={{ fontWeight: 700, marginBottom: 6 }}>
+          <div className="disclaimer-section-title" style={{ fontWeight: 700, marginBottom: 6 }}>
             Qué revisar siempre
           </div>
-          <ul style={{ margin: 0, paddingLeft: 18 }}>
+          <ul className="disclaimer-review-list" style={{ margin: 0, paddingLeft: 18 }}>
             <li>Normativa vigente aplicable al expediente.</li>
             <li>Registros institucionales y antecedentes de respaldo.</li>
             <li>Abonos cargados por causa y abono global, si corresponde.</li>
             <li>Contraste operativo o manual cuando exista duda sobre la fecha.</li>
           </ul>
         </div>
+        </div>
 
-        <div
-          style={{
-            marginTop: 12,
-            display: "flex",
-            gap: 8,
-            justifyContent: "space-between",
-            alignItems: "center",
-            flexWrap: "wrap",
-          }}
-        >
+        <div className="disclaimer-footer">
           <div
+            className="disclaimer-meta"
             style={{
               fontSize: 12,
               color: "#6b7280",
@@ -211,7 +195,7 @@ export default function DisclaimerModal() {
             <b>Teniente Luis Ascencio Oberg</b>
           </div>
 
-          <div style={{ display: "flex", gap: 8 }}>
+          <div className="disclaimer-actions">
             <button
               onClick={goToDefinitions}
               style={{

@@ -38,6 +38,7 @@ export default function ConfirmDialog({
     >
       <div
         onClick={(e) => e.stopPropagation()}
+        className="confirm-dialog-panel"
         style={{
           width: "100%",
           maxWidth: 420,
@@ -48,12 +49,12 @@ export default function ConfirmDialog({
           padding: 16,
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+        <div className="confirm-dialog-header">
           <span aria-hidden>⚠️</span>
           <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700 }}>{title}</h3>
         </div>
         <p style={{ margin: "8px 0 16px 0", color: "#374151", textAlign: "justify" }}>{message}</p>
-        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+        <div className="confirm-dialog-actions" style={{ justifyContent: "flex-end" }}>
           <button
             onClick={onCancel}
             style={{

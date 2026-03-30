@@ -285,11 +285,8 @@ function ManualRow({
 }) {
   return (
     <div
+      className="manual-row"
       style={{
-        display: "grid",
-        gridTemplateColumns: "max-content 1fr max-content",
-        gap: 6,
-        alignItems: "center",
         padding: result ? "6px 0 0" : "4px 0",
         borderTop: first ? "none" : result ? "1px solid #d1d5db" : "1px dotted #e5e7eb",
         fontFamily:
@@ -297,6 +294,7 @@ function ManualRow({
       }}
     >
       <div
+        className="manual-row-label"
         style={{
           fontSize: 12,
           fontWeight: result ? 800 : 600,
@@ -307,6 +305,7 @@ function ManualRow({
         {label}
       </div>
       <div
+        className="manual-row-divider"
         style={{
           borderBottom: result ? "1px solid transparent" : "1px dotted #cbd5e1",
           height: 1,
@@ -314,6 +313,7 @@ function ManualRow({
         }}
       />
       <div
+        className="manual-row-value"
         style={{
           fontSize: 12,
           fontWeight: result ? 800 : strong ? 700 : 600,
@@ -1184,7 +1184,7 @@ export default function CalculadoraCondenas() {
 
   /* =================== UI =================== */
   return (
-    <div style={{ maxWidth: 1100, margin: "0 auto", padding: 16 }}>
+    <div className="app-shell" style={{ maxWidth: 1100, margin: "0 auto", padding: 16 }}>
       <style>{`@media print{button,summary,details:not([open]){display:none!important} .print-block{break-inside:avoid;}}`}</style>
 
       {/* Modal de advertencia (siempre al abrir) */}
@@ -1218,7 +1218,7 @@ export default function CalculadoraCondenas() {
         </span>
 
         {/* Acciones */}
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        <div className="app-toolbar-actions">
           <button
             onClick={copiarResumen}
             style={{
@@ -1264,10 +1264,11 @@ export default function CalculadoraCondenas() {
 
       {/* Formulario principal */}
       <div
+        className="app-main-grid"
         style={{
           marginTop: 12,
           display: "grid",
-          gridTemplateColumns: "repeat(4, 1fr)",
+          gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
           gap: 12,
         }}
       >
@@ -1392,6 +1393,7 @@ export default function CalculadoraCondenas() {
       {/* Causas */}
       <div style={{ marginTop: 12 }}>
         <h3 style={{ margin: 0 }}>Causas</h3>
+        <div className="causas-toolbar">
         <label
           style={{
             display: "flex",
@@ -1408,29 +1410,22 @@ export default function CalculadoraCondenas() {
           />
           Ordenar automáticamente (más gravosa primero)
         </label>
-        <button
-          onClick={handleAgregarCausa}
-          style={{
-            marginTop: 8,
-            padding: "8px 12px",
-            borderRadius: 10,
-            border: "1px solid #e5e7eb",
+          <button
+            onClick={handleAgregarCausa}
+            style={{
+              padding: "8px 12px",
+              borderRadius: 10,
+              border: "1px solid #e5e7eb",
             background: "#fff",
             cursor: "pointer",
           }}
         >
           + Agregar causa
         </button>
+        </div>
 
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "80px 80px 80px 120px 150px 140px 40px",
-            gap: 8,
-            alignItems: "center",
-            marginTop: 10,
-          }}
-        >
+        <div className="causas-list">
+          <div className="causas-grid causas-grid--header">
           <div style={{ fontSize: 12, color: "#6b7280" }}>Años</div>
           <div style={{ fontSize: 12, color: "#6b7280" }}>Meses</div>
           <div style={{ fontSize: 12, color: "#6b7280" }}>Días</div>
@@ -1440,9 +1435,16 @@ export default function CalculadoraCondenas() {
             Nombre (opcional)
           </div>
           <div></div>
+          </div>
 
-          {causasOrdenadas.map((c) => (
-            <React.Fragment key={c.id}>
+          {causasOrdenadas.map((c, idx) => (
+            <div key={c.id} className="causa-card">
+              <div className="causa-card-title">
+                {(c.nombre || "").trim() || `Causa ${idx + 1}`}
+              </div>
+              <div className="causas-grid causas-grid--row">
+                <div className="causa-field">
+                  <div className="causa-field-label">Anos</div>
               <input
                 type="number"
                 value={c.anios}
@@ -1457,6 +1459,9 @@ export default function CalculadoraCondenas() {
                 }}
                 aria-label="Años de la causa"
               />
+                </div>
+                <div className="causa-field">
+                  <div className="causa-field-label">Meses</div>
               <input
                 type="number"
                 value={c.meses}
@@ -1471,6 +1476,9 @@ export default function CalculadoraCondenas() {
                 }}
                 aria-label="Meses de la causa"
               />
+                </div>
+                <div className="causa-field">
+                  <div className="causa-field-label">Dias</div>
               <input
                 type="number"
                 value={c.dias}
@@ -1485,7 +1493,10 @@ export default function CalculadoraCondenas() {
                 }}
                 aria-label="Días de la causa"
               />
-              <div style={{ display: "flex", gap: 8 }}>
+                </div>
+                <div className="causa-field causa-regimen-field">
+                  <div className="causa-field-label">Regimen</div>
+              <div className="causa-regimen-group">
                 <label style={{ display: "flex", gap: 6, alignItems: "center" }}>
                   <input
                     type="radio"
@@ -1505,6 +1516,9 @@ export default function CalculadoraCondenas() {
                   2/3
                 </label>
               </div>
+                </div>
+                <div className="causa-field">
+                  <div className="causa-field-label">Abono por causa</div>
               <input
                 type="number"
                 value={c.abonoCausa}
@@ -1523,6 +1537,9 @@ export default function CalculadoraCondenas() {
                 }}
                 aria-label="Abono por causa"
               />
+                </div>
+                <div className="causa-field causa-name-field">
+                  <div className="causa-field-label">Nombre (opcional)</div>
               <input
                 value={c.nombre || ""}
                 onChange={(e) => handleChangeCausa(c.id, "nombre", e.target.value)}
@@ -1535,7 +1552,11 @@ export default function CalculadoraCondenas() {
                 }}
                 aria-label="Nombre de la causa"
               />
+                </div>
+                <div className="causa-field causa-delete-field">
+                  <div className="causa-field-label">Eliminar</div>
               <button
+                className="causa-delete-button"
                 onClick={() => handleRemoveCausa(c.id)}
                 title="Eliminar causa"
                 style={{
@@ -1568,18 +1589,20 @@ export default function CalculadoraCondenas() {
                   <path d="M14 11v6" />
                 </svg>
               </button>
-            </React.Fragment>
+                </div>
+              </div>
+            </div>
           ))}
         </div>
       </div>
 
       {/* RESULTADOS */}
       <div
-        className="print-block"
+        className="print-block responsive-results-grid"
         style={{
           marginTop: 12,
           display: "grid",
-          gridTemplateColumns: "repeat(4, 1fr)",
+          gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
           gap: 12,
         }}
       >
@@ -1593,9 +1616,7 @@ export default function CalculadoraCondenas() {
             boxShadow: "0 1px 0 rgba(0,0,0,0.03)",
           }}
         >
-          <div
-            style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}
-          >
+          <div className="summary-card-head">
             <div style={{ fontSize: 12, color: "#b45309" }}>Término Original</div>
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
               {chip(`Brutos: ${resultados._debug?.diasBrutosTotales ?? "—"}`)}
@@ -1620,9 +1641,7 @@ export default function CalculadoraCondenas() {
           }}
           title="TM automático según base efectiva y régimen; se puede ajustar ±1 día (presentación)"
         >
-          <div
-            style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 6 }}
-          >
+          <div className="summary-card-head">
             <div style={{ fontSize: 12, color: "#1d4ed8" }}>TM (automático)</div>
             <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
               {chip((() => {
@@ -1650,9 +1669,7 @@ export default function CalculadoraCondenas() {
           }}
           title="TMBI automático como TM − 12 meses (respeta fin de mes)"
         >
-          <div
-            style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 6 }}
-          >
+          <div className="summary-card-head">
             <div style={{ fontSize: 12, color: "#6d28d9" }}>TMBI (automático)</div>
             <div>{metricas ? chip(`Tramo Inicio→TMBI: ${metricas.L} días`) : null}</div>
           </div>
@@ -1672,9 +1689,7 @@ export default function CalculadoraCondenas() {
           }}
           title="CET se calcula automáticamente desde Inicio y TMBI; se puede ajustar ±1 día (presentación)"
         >
-          <div
-            style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 6 }}
-          >
+          <div className="summary-card-head">
             <div style={{ fontSize: 12, color: "#0e7490" }}>TM CET (automático)</div>
             <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
               {metricas ? chip(`Días CET: ${metricas.diasCET}`) : null}
@@ -1996,9 +2011,10 @@ export default function CalculadoraCondenas() {
           </div>
 
           <div
+            className="abonar-grid"
             style={{
               display: "grid",
-              gridTemplateColumns: "repeat(4, 1fr)",
+              gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
               gap: 8,
               alignItems: "end",
             }}
@@ -2195,18 +2211,19 @@ export default function CalculadoraCondenas() {
           </div>
 
           <div
+            className="responsive-three-col"
             style={{
               display: "grid",
-              gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+              gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
               gap: 8,
             }}
           >
-            <div style={{ gridColumn: "span 3" }}>
+            <div style={{ gridColumn: "1 / -1" }}>
               {chip(`Total abonos acumulados (causa + global): ${totalAbonosTodos}`)}
             </div>
             <div
               style={{
-                gridColumn: "span 3",
+                gridColumn: "1 / -1",
                 padding: 8,
                 borderRadius: 8,
                 border: "1px solid #e5e7eb",
@@ -2226,7 +2243,7 @@ export default function CalculadoraCondenas() {
             {hayAbonosPorCausaYGlobal ? (
               <div
                 style={{
-                  gridColumn: "span 3",
+                  gridColumn: "1 / -1",
                   padding: 8,
                   borderRadius: 8,
                   border: "1px solid #f59e0b",
@@ -2239,7 +2256,7 @@ export default function CalculadoraCondenas() {
                 acumulan en la base efectiva.
               </div>
             ) : null}
-            <div style={{ gridColumn: "span 2" }}>
+            <div style={{ gridColumn: "1 / -1" }}>
               <label
                 style={{
                   display: "block",
@@ -2267,7 +2284,7 @@ export default function CalculadoraCondenas() {
           </div>
 
           {/* Botones de distribución */}
-          <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
+          <div className="action-row" style={{ marginTop: 10 }}>
             <button
               onClick={sugerirDistribucion}
               style={{
@@ -2341,12 +2358,14 @@ export default function CalculadoraCondenas() {
               <div style={{ fontWeight: 600, marginBottom: 6 }}>
                 Distribución propuesta (abonos por causa)
               </div>
-              <div
+              <div style={{ overflowX: "auto" }}>
+                <div
                 style={{
                   display: "grid",
                   gridTemplateColumns: "minmax(120px,1fr) 120px 120px",
                   gap: 8,
                   alignItems: "center",
+                  minWidth: 340,
                 }}
               >
                 <div style={{ fontSize: 12, color: "#6b7280" }}>Causa</div>
@@ -2368,15 +2387,16 @@ export default function CalculadoraCondenas() {
                   );
                 })}
               </div>
+              </div>
 
               {/* Previa de resultados con sugeridos */}
               {simulados ? (
                 <div
-                  className="print-block"
+                  className="print-block responsive-results-grid"
                   style={{
                     marginTop: 10,
                     display: "grid",
-                    gridTemplateColumns: "repeat(4, 1fr)",
+                    gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
                     gap: 12,
                   }}
                 >
@@ -2448,10 +2468,11 @@ export default function CalculadoraCondenas() {
 
         {/* (3) AJUSTES FINOS + (4) INGRESOS MANUALES */}
         <div
+          className="responsive-two-col"
           style={{
             marginTop: 12,
             display: "grid",
-            gridTemplateColumns: "1fr 1fr",
+            gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
             gap: 12,
           }}
         >
@@ -2489,9 +2510,10 @@ export default function CalculadoraCondenas() {
             ) : (
               <>
                 <div
+                  className="responsive-two-col"
                   style={{
                     display: "grid",
-                    gridTemplateColumns: "1fr 1fr",
+                    gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
                     gap: 8,
                     alignItems: "end",
                   }}
@@ -2603,9 +2625,10 @@ export default function CalculadoraCondenas() {
             )}
 
             <div
+              className="responsive-two-col"
               style={{
                 display: "grid",
-                gridTemplateColumns: "1fr 1fr",
+                gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
                 gap: 8,
               }}
             >
@@ -2705,7 +2728,7 @@ export default function CalculadoraCondenas() {
           <div style={{ fontWeight: 700, marginBottom: 6 }}>
             Respaldo del expediente (.json/.csv)
           </div>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <div className="action-row">
             <button
               onClick={exportarJSON}
               style={{

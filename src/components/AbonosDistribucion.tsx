@@ -88,14 +88,16 @@ const AbonosDistribucion: React.FC<Props> = ({
       </div>
 
       {/* Tabla editable de abonos por causa */}
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "minmax(160px,1fr) 100px 100px 100px 140px 120px 120px",
-          gap: 8,
-          alignItems: "center",
-        }}
-      >
+      <div style={{ overflowX: "auto" }}>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "minmax(160px,1fr) 100px 100px 100px 140px 120px 120px",
+            gap: 8,
+            alignItems: "center",
+            minWidth: 820,
+          }}
+        >
         <div style={{ fontSize: 12, color: "#6b7280" }}>Causa</div>
         <div style={{ fontSize: 12, color: "#6b7280" }}>Años</div>
         <div style={{ fontSize: 12, color: "#6b7280" }}>Meses</div>
@@ -139,6 +141,7 @@ const AbonosDistribucion: React.FC<Props> = ({
             No hay causas para distribuir abonos.
           </div>
         )}
+        </div>
       </div>
 
       {/* Pie de módulo */}

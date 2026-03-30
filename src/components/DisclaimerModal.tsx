@@ -84,7 +84,7 @@ export default function DisclaimerModal() {
               id="disclaimer-title"
               style={{ margin: 0, fontSize: 18, fontWeight: 800 }}
             >
-              Advertencia y alcance
+              Antes de usar la calculadora
             </h2>
           </div>
 
@@ -105,21 +105,6 @@ export default function DisclaimerModal() {
           </button>
         </div>
 
-        <p
-          style={{
-            marginTop: 10,
-            lineHeight: 1.6,
-            color: "#374151",
-            textAlign: "justify",
-          }}
-        >
-          Esta es una herramienta <b>orientativa/educativa</b> para apoyar el
-          trabajo penitenciario. Puede contener <b>errores</b> o criterios en
-          revisión. <b>No reemplaza</b> la labor profesional ni los sistemas
-          oficiales. Verifica siempre con la normativa vigente y registros
-          institucionales.
-        </p>
-
         <div
           style={{
             marginTop: 10,
@@ -132,34 +117,21 @@ export default function DisclaimerModal() {
           }}
         >
           <div style={{ fontWeight: 700, marginBottom: 6 }}>
-            Conceptos clave
+            Qué es esta herramienta
           </div>
-          <ul style={{ margin: 0, paddingLeft: 18 }}>
-            <li>
-              <b>UTC:</b> las fechas se calculan en UTC (evita diferencias por
-              huso horario).
-            </li>
-            <li>
-              <b>TO normativo:</b> suma encadenada de causas con abonos por
-              causa y descuento del abono <i>global</i> del expediente.
-            </li>
-            <li>
-              <b>TM/TMBI/CET:</b> mínimos calculados desde la base efectiva,
-              con vista <i>Oficial</i> (exclusiva) o <i>Doctrinal</i> (inclusiva).
-            </li>
-            <li>
-              <b>Ajustes finos (±1 día):</b> desplazan la fecha mostrada de TM y
-              CET sin alterar la base de cálculo. Útiles para cuadrar expedientes
-              con corrimientos mínimos.
-            </li>
-          </ul>
+          <div style={{ fontSize: 14 }}>
+            Esta calculadora es una herramienta de <b>apoyo orientativo</b> para
+            revisar cómputos del expediente de forma rápida. No reemplaza la
+            revisión profesional, la normativa vigente ni los registros
+            institucionales.
+          </div>
         </div>
 
         <div
           style={{
             marginTop: 10,
             background: "#ffffff",
-            border: "1px dashed #e5e7eb",
+            border: "1px solid #e5e7eb",
             borderRadius: 12,
             padding: 12,
             lineHeight: 1.55,
@@ -167,12 +139,55 @@ export default function DisclaimerModal() {
           }}
         >
           <div style={{ fontWeight: 700, marginBottom: 6 }}>
-            Referencia normativa general
+            Qué resultados entrega
+          </div>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+              gap: 8,
+            }}
+          >
+            {[
+              ["TO", "Fecha final de cumplimiento de la condena."],
+              ["TM", "Fecha en que se cumple el mínimo exigido según el régimen."],
+              ["TMBI", "Fecha de referencia para beneficio intrapenitenciario."],
+              ["TM CET", "Fecha de control de ejecución que muestra la calculadora."],
+            ].map(([sigla, detalle]) => (
+              <div
+                key={sigla}
+                style={{
+                  border: "1px solid #e5e7eb",
+                  borderRadius: 10,
+                  padding: "8px 10px",
+                  background: "#fafafa",
+                }}
+              >
+                <b>{sigla}:</b> {detalle}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div
+          style={{
+            marginTop: 10,
+            background: "#fffbeb",
+            border: "1px solid #f59e0b",
+            borderRadius: 12,
+            padding: 12,
+            lineHeight: 1.55,
+            color: "#92400e",
+          }}
+        >
+          <div style={{ fontWeight: 700, marginBottom: 6 }}>
+            Qué revisar siempre
           </div>
           <ul style={{ margin: 0, paddingLeft: 18 }}>
-            <li>DL 321 y modificaciones (libertad condicional y cómputos).</li>
-            <li>Decreto Supremo N° 338 (Reglamento Gendarmería) y modif.</li>
-            <li>Ley 21.627 (ajustes legales recientes relacionados).</li>
+            <li>Normativa vigente aplicable al expediente.</li>
+            <li>Registros institucionales y antecedentes de respaldo.</li>
+            <li>Abonos cargados por causa y abono global, si corresponde.</li>
+            <li>Contraste operativo o manual cuando exista duda sobre la fecha.</li>
           </ul>
         </div>
 

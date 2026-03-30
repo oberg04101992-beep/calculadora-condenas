@@ -1933,13 +1933,14 @@ export default function CalculadoraCondenas() {
 
         <div style={{ marginTop: 8, display: "grid", gap: 8, fontSize: 14 }}>
           {[
-            ["Inicio", "Fecha base del expediente en DD/MM/AAAA."],
-            ["Base efectiva", "Resultado tras abonos por causa y abono global."],
-            ["TO", "Inicio + (Base efectiva − 1)."],
-            ["TM", "1/2 o 2/3 de la base efectiva, según régimen."],
-            ["TMBI", "TM − 12 meses, respetando fin de mes."],
-            ["TM CET", "2/3 del tramo inclusivo entre Inicio y TMBI."],
-            ["Ajustes visuales", "Solo mueven la fecha mostrada de TM y TM CET."],
+            ["Inicio", "Fecha desde la que comienza el cómputo del expediente."],
+            ["Término original (TO)", "Fecha final de cumplimiento de la condena según el cómputo actual."],
+            ["Tiempo mínimo (TM)", "Fecha en que se cumple el mínimo exigido según el régimen aplicado."],
+            ["TMBI", "Fecha de referencia para beneficio intrapenitenciario, obtenida desde el TM."],
+            ["TM CET", "Fecha de control de ejecución que la calculadora muestra a partir del tramo entre Inicio y TMBI."],
+            ["Base efectiva", "Total de días que realmente se usan para calcular TO y mínimos, después de los abonos."],
+            ["Abono", "Descuento de días que reduce el tiempo a computar. Puede cargarse por causa o como abono global."],
+            ["Régimen 1/2 y 2/3", "Porcentaje de la base efectiva que se usa para calcular el TM del expediente."],
           ].map(([titulo, detalle]) => (
             <div
               key={titulo}
@@ -1964,7 +1965,7 @@ export default function CalculadoraCondenas() {
                 '"Cascadia Mono", "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace',
             }}
           >
-            Base efectiva = (Tras abonos por causa) − (Abono global)
+            Base efectiva = (días útiles por causa) − (abono global)
           </div>
         </div>
       </details>
